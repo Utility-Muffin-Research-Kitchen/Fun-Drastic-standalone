@@ -171,6 +171,9 @@ fi
 # Replace a single drastic.cfg key, but only where it still equals the value an
 # earlier package shipped. Future migration blocks call this; leaving it unused
 # at version 1 is expected.
+# Unused at defaults version 1 by design - there is no earlier shipped default
+# to recognize yet. The version 2 migration block below will call it.
+# shellcheck disable=SC2317,SC2329
 cfg_migrate_key() {
     local key="$1" previous_default="$2" new_default="$3"
     local cfg="$STATE_ROOT/config/drastic.cfg"
@@ -210,9 +213,11 @@ for bios_name in "${NDS_BIOS_FILES[@]}"; do
     if [ -f "$source_bios" ]; then
         bios_found+=("$bios_name")
         if [ ! -f "$target_bios" ] || [ "${FUN_DRASTIC_BIOS_REFRESH:-0}" = "1" ]; then
-            cp -f "$source_bios" "$target_bios" 2>/dev/null &&
-                log "installed user BIOS: $bios_name" ||
+            if cp -f "$source_bios" "$target_bios" 2>/dev/null; then
+                log "installed user BIOS: $bios_name"
+            else
                 log "WARNING: could not install user BIOS: $bios_name"
+            fi
         fi
     else
         bios_absent+=("$bios_name")
@@ -489,6 +494,8 @@ log "launching drastic64 (hook=$FUN_HOOK driver=$SDL_VIDEODRIVER)"
 # emulator is still tracked and still killed with the session. Signals are
 # forwarded so a Jawaka stop reaches drastic64 rather than only this shell.
 emulator_pid=""
+# Invoked only from the traps below, which shellcheck cannot see.
+# shellcheck disable=SC2317,SC2329
 forward_signal() {
     if [ -n "$emulator_pid" ]; then
         kill -"$1" "$emulator_pid" 2>/dev/null || true
