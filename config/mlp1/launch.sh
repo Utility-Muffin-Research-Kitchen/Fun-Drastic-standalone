@@ -406,7 +406,14 @@ fi
 # same name, so the uinput clone is identified by its virtual sysfs path.
 resolve_mlp1_virtual_gamepad() {
     awk '
-        /^$/ {
+        # Reset on the record header, not on the blank line between records.
+        # Every record starts with "I:", so this cannot be skipped; a
+        # separator-based reset leaks state into the next record if the blank
+        # line is ever absent, and the leak is silent -- it yields a real,
+        # existing event node belonging to the previous device, which passes
+        # the [ -e ] guard below.
+        # (No apostrophes in here: the whole program is single-quoted.)
+        /^I:/ {
             name = 0
             virtual = 0
             event = ""
