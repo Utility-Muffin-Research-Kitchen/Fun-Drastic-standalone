@@ -39,7 +39,7 @@ The package is not a single work. Each component keeps its own terms.
 | `config/usrcheat.dat`, `game_database.xml` | DraStic distribution | Redistributed as part of the DraStic data set |
 | `language/*.txt` | tenlevels and contributors | Proprietary, used with permission |
 | `fonts/Nunito-Bold.ttf` | The Nunito Project Authors | SIL Open Font License 1.1 |
-| `fonts/Translate.otf` | Bundled translation font | See `THIRD-PARTY-NOTICES.txt` |
+| `fonts/Translate.otf` | Adobe / the Noto Project (this is Noto Sans CJK SC Regular under another filename) | SIL Open Font License 1.1 |
 | `lib/libSDL2-2.0.so.0` | SDL | zlib license |
 | `lib/libasound.so.2` | ALSA project | LGPL-2.1-or-later |
 | `lib/libxkbcommon.so.0` | xkbcommon | MIT |
