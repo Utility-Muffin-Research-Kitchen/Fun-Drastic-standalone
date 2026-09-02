@@ -1,0 +1,47 @@
+{
+  "id": "fun_drastic",
+  "name": "Fun DraStic",
+  "platform": "mlp1",
+  "kind": "standalone-emulator",
+  "author": "@AUTHOR@",
+  "version": "@VERSION@",
+  "package_schema_version": 1,
+  "config_schema_version": @CONFIG_VERSION@,
+  "target_soc": "rk3566",
+  "target_cpu": "cortex-a55",
+  "source_archive": "@ARCHIVE_NAME@",
+  "source_archive_sha256": "@ARCHIVE_SHA256@",
+  "binary": "bin/drastic64",
+  "binary_sha256": "@BINARY_SHA256@",
+  "entrypoint": "launch.sh",
+  "sdl_video_driver": "wayland",
+  "frontend": "libfundrastic.so LD_PRELOAD SDL interposer",
+  "bundled_libs": [
+    "libSDL2-2.0.so.0",
+    "libasound.so.2",
+    "libfundrastic.so",
+    "libwayland-cursor.so.0",
+    "libxkbcommon.so.0"
+  ],
+  "state_root": "USERDATA_PATH/fun-drastic",
+  "log_file": "LOGS_PATH/fun-drastic.log",
+  "shares_dsv_saves_with": "drastic",
+  "bundled_bios": [
+    "system/drastic_bios_arm7.bin",
+    "system/drastic_bios_arm9.bin"
+  ],
+  "bios_note": "DraStic's own free replacement BIOS. The Nintendo dumps (nds_bios_arm7.bin, nds_bios_arm9.bin, nds_firmware.bin) are user-supplied and never shipped.",
+  "authorization": "licenses/DISTRIBUTION-BASIS.md",
+  "distribution_status": "proprietary-used-with-permission",
+  "exceptions": [
+    {
+      "artifact": "bin/drastic64",
+      "reason": "prebuilt closed-source DraStic binary; not built by UMRK"
+    },
+    {
+      "artifact": "lib/libfundrastic.so",
+      "reason": "prebuilt Fun DraStic frontend hook by @AUTHOR@; not built by UMRK"
+    }
+  ],
+  "files": []
+}
