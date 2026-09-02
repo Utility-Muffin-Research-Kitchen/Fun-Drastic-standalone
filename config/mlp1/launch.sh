@@ -9,15 +9,19 @@ set -euo pipefail
 # script does, because runtime data has two owners and neither one is
 # virtualized:
 #
-#   drastic64  resolves config/, system/, savestates/, backup/, microphone/,
-#              game_database.xml and usrcheat.dat relative to its working
-#              directory. It interposes no file I/O, so the working directory
-#              is the only lever.
+#   drastic64  resolves config/, system/, microphone/, game_database.xml and
+#              usrcheat.dat relative to its working directory, so the working
+#              directory is the only lever for those.
 #   the hook   resolves fonts/, language/, themes/, Overlays/ and res/cursor/
 #              from $FUN_DRASTIC_DIR, with no fallback. A missing font is not
 #              a degraded menu, it is an unrendered one.
+#   the hook   also rewrites the save and savestate paths before main() runs
+#              (it interposes __libc_start_main), sending them to
+#              $SDCARD_PATH/Saves/NDS rather than the working directory's
+#              backup/ and savestates/. Verified on an MLP1.
 #
-# Both halves are seeded below. The vendor launcher seeds only the first.
+# The first two are seeded below; the vendor launcher seeds only the first.
+# The third is where the shared-save mirror works - see further down.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -223,51 +227,154 @@ fi
 
 # --- shared in-game saves ---------------------------------------------------
 
-# drastic64 is byte-identical in both NDS packages, so the .dsv format is
-# guaranteed compatible and a game switched between the two emulators should
-# keep its progress. The binary resolves backup/ relative to its working
-# directory with no override, and the SD card is FAT32 (no symlinks), so the
-# shared root is maintained by mirroring rather than by a shared inode.
+# drastic64 is byte-identical in both NDS packages, so the in-game save format
+# is identical too and a game switched between them should keep its progress.
+# Where each package puts that save is not identical:
 #
-# Fun DraStic owns both directions of the mirror: newer-wins in before launch,
-# newer-wins out after exit. That keeps the primary DraStic package unmodified
-# and still leaves both directories current whichever emulator ran last.
-# Configuration and savestates stay separate; only .dsv files move.
+#   primary DraStic   <its state root>/backup/<rom name>.dsv
+#   Fun DraStic       $SDCARD_PATH/Saves/NDS/<rom name>.sram
+#
+# The hook rewrites the save and savestate paths at startup - it carries the
+# literals "Saves/NDS", "Saves/NDS/states", "Saves/NDS/previews" and reads
+# SDCARD_PATH - so Fun DraStic writes into Leaf's public Saves folder and never
+# touches backup/. The two files are the same DeSmuME format byte for byte,
+# footer included; only the directory and the extension differ.
+#
+# The SD card is FAT32, so there is no symlink or hardlink to make one file
+# serve both names. The wrapper mirrors instead: newest-wins in before launch,
+# newest-wins out after exit, matched on the ROM base name. Fun DraStic owns
+# both directions, which is what keeps the primary DraStic package unmodified.
+# Configuration and savestates stay separate and are never mirrored.
+#
+# This tracks the hook's own rule ($SDCARD_PATH/Saves/NDS) rather than
+# SAVES_PATH, so the mirror cannot drift from where the emulator actually
+# writes if the two ever diverge.
+FUN_DRASTIC_SAVES_DIR="${FUN_DRASTIC_SAVES_DIR:-$SDCARD_PATH/Saves/NDS}"
 PRIMARY_DRASTIC_STATE_ROOT="${PRIMARY_DRASTIC_STATE_ROOT:-${UMRK_INTERNAL_DATA_PATH:-$SDCARD_PATH/.umrk/$PLATFORM}/drastic}"
 PRIMARY_BACKUP_DIR="$PRIMARY_DRASTIC_STATE_ROOT/backup"
 SHARE_SAVES="${FUN_DRASTIC_SHARE_SAVES:-1}"
 
-mirror_saves() {
-    local from="$1" to="$2" direction="$3"
-    [ -d "$from" ] || return 0
-    [ -d "$to" ] || return 0
-    local source_file base target
-    for source_file in "$from"/*.dsv; do
-        [ -f "$source_file" ] || continue
-        base="$(basename "$source_file")"
-        target="$to/$base"
-        if [ -f "$target" ] && [ ! "$source_file" -nt "$target" ]; then
-            continue
-        fi
-        if cp -f "$source_file" "$target" 2>/dev/null; then
-            log "save $direction: $base"
-        else
-            log "WARNING: save $direction failed: $base"
-        fi
-    done
+# Copy one save across, keeping the modification time. Preserving it is what
+# makes the mirror idempotent: a copy that inherited the copy time would look
+# newer than its own source on the way back, so every exit would rewrite the
+# other package's saves whether or not anything was played. It also makes the
+# newest-wins comparison mean "last saved" rather than "last copied", which is
+# the question being asked.
+mirror_one_save() {
+    local source_file="$1" target="$2" direction="$3"
+    if [ -f "$target" ] && [ ! "$source_file" -nt "$target" ]; then
+        return 0
+    fi
+    if cp -p -f "$source_file" "$target" 2>/dev/null ||
+       cp -f "$source_file" "$target" 2>/dev/null; then
+        log "save $direction: $(basename "$source_file")"
+    else
+        log "WARNING: save $direction failed: $(basename "$source_file")"
+    fi
 }
 
-if [ "$SHARE_SAVES" = "1" ] && [ -d "$PRIMARY_BACKUP_DIR" ]; then
-    mirror_saves "$PRIMARY_BACKUP_DIR" "$STATE_ROOT/backup" "imported"
-elif [ "$SHARE_SAVES" = "1" ]; then
-    log "primary DraStic saves not present at $PRIMARY_BACKUP_DIR; nothing to import"
+# Only the game being launched is mirrored, never the whole directory. Two
+# reasons, both learned on the device:
+#
+#  * Blast radius. These are the user's real saves. A per-ROM mirror cannot
+#    touch a game this session has nothing to do with.
+#  * Fun DraStic truncates the save name for a ROM launched from an archive -
+#    "Game (USA) (En,Fr).zip" saves as "Game (USA.sram" - so a whole-directory
+#    export copies that mangled name back into the other package's save folder
+#    as a junk .dsv that nothing will ever read. Scoping to the launched ROM's
+#    own base name leaves it alone. See the archive caveat in README.txt.
+ROM_BASE_NAME="$(basename "$ROM_PATH")"
+ROM_BASE_NAME="${ROM_BASE_NAME%.*}"
+
+# Fun DraStic does not name the save after the ROM. It cuts the name at the
+# first ") (" - what looks like an attempt to strip No-Intro region and
+# language tags, one character short of the closing bracket. Observed on an
+# MLP1, for both a raw .nds and the same ROM inside a .zip:
+#
+#   "ZZ Fun DraStic Test (raw)"                 -> "ZZ Fun DraStic Test (raw)"
+#   "Mario Kart DS (USA Australia) (EnFrDeEsIt)" -> "Mario Kart DS (USA Australia"
+#
+# The rule is reverse-engineered, so it is used for the import (where a name
+# has to be chosen up front) and then checked against what the emulator
+# actually wrote. A mismatch is logged loudly rather than silently skipping the
+# save, and the export falls back to whatever .sram the session really touched.
+fun_drastic_save_name() {
+    local name="$1"
+    case "$name" in
+        *") ("*) printf '%s' "${name%%") ("*}" ;;
+        *)       printf '%s' "$name" ;;
+    esac
+}
+FUN_SAVE_NAME="$(fun_drastic_save_name "$ROM_BASE_NAME")"
+if [ "$FUN_SAVE_NAME" != "$ROM_BASE_NAME" ]; then
+    log "Fun DraStic will name this game's save '$FUN_SAVE_NAME'"
 fi
+
+import_saves() {
+    [ "$SHARE_SAVES" = "1" ] || return 0
+    local source_file="$PRIMARY_BACKUP_DIR/$ROM_BASE_NAME.dsv"
+    if [ ! -f "$source_file" ]; then
+        log "no primary DraStic save for this game; nothing to import"
+        return 0
+    fi
+    mkdir -p "$FUN_DRASTIC_SAVES_DIR" 2>/dev/null || return 0
+    mirror_one_save "$source_file" \
+        "$FUN_DRASTIC_SAVES_DIR/$FUN_SAVE_NAME.sram" imported
+}
+
+# The save this session actually wrote. Normally the predicted name; if the
+# prediction was wrong it is whichever .sram changed while the emulator ran,
+# which keeps the round trip working even when the naming rule shifts.
+find_session_save() {
+    local predicted="$FUN_DRASTIC_SAVES_DIR/$FUN_SAVE_NAME.sram"
+
+    # "Written this run" is the test, not "exists": the import leaves a file at
+    # the predicted name with the source's own timestamp, so presence alone
+    # would always match and the fallback would never run.
+    local candidate newest=""
+    for candidate in "$FUN_DRASTIC_SAVES_DIR"/*.sram; do
+        [ -f "$candidate" ] || continue
+        [ "$candidate" -nt "$SESSION_MARKER" ] || continue
+        if [ "$candidate" = "$predicted" ]; then
+            printf '%s' "$predicted"
+            return 0
+        fi
+        if [ -z "$newest" ] || [ "$candidate" -nt "$newest" ]; then
+            newest="$candidate"
+        fi
+    done
+
+    if [ -n "$newest" ]; then
+        log "WARNING: expected save '$FUN_SAVE_NAME.sram' but the session wrote '$(basename "$newest")'; the naming rule has changed"
+        printf '%s' "$newest"
+        return 0
+    fi
+
+    # Nothing was written. Naming the predicted file keeps the caller simple:
+    # the newest-wins check in mirror_one_save skips it.
+    [ -f "$predicted" ] || return 1
+    printf '%s' "$predicted"
+}
 
 export_saves() {
     [ "$SHARE_SAVES" = "1" ] || return 0
     [ -d "$PRIMARY_BACKUP_DIR" ] || return 0
-    mirror_saves "$STATE_ROOT/backup" "$PRIMARY_BACKUP_DIR" "exported"
+    local source_file
+    if ! source_file="$(find_session_save)" || [ -z "$source_file" ]; then
+        log "no Fun DraStic save for this game; nothing to export"
+        return 0
+    fi
+    # Always land under the ROM's own base name: that is what the primary
+    # DraStic package looks for, whatever Fun DraStic called its own copy.
+    mirror_one_save "$source_file" \
+        "$PRIMARY_BACKUP_DIR/$ROM_BASE_NAME.dsv" exported
 }
+
+# Timestamp reference for find_session_save; created before the emulator runs.
+SESSION_MARKER="$RUNTIME_DIR/session.stamp"
+: >"$SESSION_MARKER"
+
+import_saves
 
 # --- environment ------------------------------------------------------------
 
@@ -311,9 +418,15 @@ resolve_mlp1_virtual_gamepad() {
             virtual = 1
         }
         /^H: Handlers=/ {
+            # "H: Handlers=event6 dmcfreq" glues the first handler to the key,
+            # so the field is "Handlers=event6" and a bare /^event[0-9]+$/ test
+            # silently misses any device whose event node happens to come
+            # first. Strip the key before matching.
             for (i = 1; i <= NF; i++) {
-                if ($i ~ /^event[0-9]+$/) {
-                    event = $i
+                handler = $i
+                sub(/^Handlers=/, "", handler)
+                if (handler ~ /^event[0-9]+$/) {
+                    event = handler
                 }
             }
         }

@@ -84,8 +84,13 @@ cat >"$PKG/bin/drastic64" <<'STUB'
     echo "SDL_JOYSTICK_DISABLE_UDEV=${SDL_JOYSTICK_DISABLE_UDEV:-}"
     echo "LD_PRELOAD=${LD_PRELOAD:-}"
 } >"${FUN_DRASTIC_STUB_REPORT:?}"
+# The Fun DraStic hook rewrites the save path at startup: in-game saves land in
+# $SDCARD_PATH/Saves/NDS/<rom name>.sram, not in backup/<rom name>.dsv. The stub
+# writes where the real emulator writes, otherwise the mirror test proves
+# nothing.
 if [ -n "${FUN_DRASTIC_STUB_WRITE_SAVE:-}" ]; then
-    printf 'fun-drastic-save' >"$PWD/backup/$FUN_DRASTIC_STUB_WRITE_SAVE"
+    mkdir -p "${SDCARD_PATH:?}/Saves/NDS"
+    printf 'fun-drastic-save' >"$SDCARD_PATH/Saves/NDS/$FUN_DRASTIC_STUB_WRITE_SAVE"
 fi
 exit "${FUN_DRASTIC_STUB_RC:-0}"
 STUB
@@ -95,7 +100,7 @@ chmod 755 "$PKG/bin/drastic64"
 
 SD="$WORK/sd"
 mkdir -p "$SD/Roms/NDS" "$SD/BIOS/NDS" "$SD/.userdata/mlp1/logs" \
-    "$SD/.umrk/mlp1/drastic/backup"
+    "$SD/.umrk/mlp1/drastic/backup" "$SD/Saves/NDS"
 ROM="$SD/Roms/NDS/A Game's Demo.nds"
 printf 'rom' >"$ROM"
 
@@ -221,23 +226,93 @@ check_contains "roster passed through unchanged" "$REPORT" \
 
 # --- shared in-game saves ---------------------------------------------------
 
-echo "== .dsv saves are shared with the primary DraStic package =="
+echo "== in-game saves are shared with the primary DraStic package =="
+# The two packages store the same DeSmuME bytes under different names:
+# primary DraStic backup/<name>.dsv, Fun DraStic Saves/NDS/<name>.sram.
+# The mirror is scoped to the ROM being launched, so it is keyed on the test
+# ROM's own base name.
 PRIMARY_BACKUP="$SD/.umrk/mlp1/drastic/backup"
-printf 'primary-save' >"$PRIMARY_BACKUP/Imported.dsv"
-run_launcher FUN_DRASTIC_STUB_WRITE_SAVE="Exported.dsv" >/dev/null 2>&1
-check "primary save imported before launch" test -f "$STATE/backup/Imported.dsv"
-check "Fun DraStic save exported after exit" \
-    test -f "$PRIMARY_BACKUP/Exported.dsv"
+FD_SAVES="$SD/Saves/NDS"
+ROM_BASE="A Game's Demo"
+printf 'primary-save' >"$PRIMARY_BACKUP/$ROM_BASE.dsv"
+run_launcher FUN_DRASTIC_STUB_WRITE_SAVE="$ROM_BASE.sram" >/dev/null 2>&1
+check "primary .dsv imported as .sram before launch" \
+    test -f "$FD_SAVES/$ROM_BASE.sram"
+check "Fun DraStic .sram exported as .dsv after exit" \
+    test -f "$PRIMARY_BACKUP/$ROM_BASE.dsv"
 check_contains "exported save has the emulator's bytes" \
-    "$PRIMARY_BACKUP/Exported.dsv" "fun-drastic-save"
+    "$PRIMARY_BACKUP/$ROM_BASE.dsv" "fun-drastic-save"
 check "savestates are not shared" test ! -e "$SD/.umrk/mlp1/drastic/savestates"
 
+echo "== the mirror never touches another game's save =="
+# These are the user's real saves in production. A session for one game must
+# not read, rewrite, or invent a file for any other.
+printf 'other-game' >"$PRIMARY_BACKUP/Some Other Game.dsv"
+other_before="$(shasum -a 256 "$PRIMARY_BACKUP/Some Other Game.dsv" | cut -d" " -f1)"
+# A save the emulator wrote under a mangled name, as it does for archived ROMs.
+printf 'truncated' >"$FD_SAVES/A Game's Demo (USA.sram"
+run_launcher >/dev/null 2>&1
+other_after="$(shasum -a 256 "$PRIMARY_BACKUP/Some Other Game.dsv" | cut -d" " -f1)"
+check "an unrelated game's save is untouched" test "$other_before" = "$other_after"
+check "no .sram for an unrelated game is created" \
+    test ! -e "$FD_SAVES/Some Other Game.sram"
+check "a truncated archive save is not exported as junk" \
+    test ! -e "$PRIMARY_BACKUP/A Game's Demo (USA.dsv"
+
+echo "== the mirror is idempotent =="
+# Preserving mtime is what stops every launch from rewriting the other
+# package's saves when nothing was played.
+before="$(ls -lT "$PRIMARY_BACKUP/$ROM_BASE.dsv" 2>/dev/null || ls -l --full-time "$PRIMARY_BACKUP/$ROM_BASE.dsv")"
+run_launcher >/dev/null 2>&1
+after="$(ls -lT "$PRIMARY_BACKUP/$ROM_BASE.dsv" 2>/dev/null || ls -l --full-time "$PRIMARY_BACKUP/$ROM_BASE.dsv")"
+check "an unplayed session does not rewrite the primary save" \
+    test "$before" = "$after"
+
+echo "== the save-name rule matches what Fun DraStic actually does =="
+# Fun DraStic cuts the save name at the first ") (". A ROM with No-Intro style
+# region and language tags therefore saves under a different name than its own,
+# and the mirror has to follow that or sharing silently does nothing.
+TAGGED="$SD/Roms/NDS/Mario Kart DS (USA Australia) (EnFrDeEsIt).nds"
+printf 'rom' >"$TAGGED"
+printf 'tagged-primary' >"$PRIMARY_BACKUP/Mario Kart DS (USA Australia) (EnFrDeEsIt).dsv"
+env -u SDL_JOYSTICK_DEVICE PLATFORM=mlp1 SDCARD_PATH="$SD" \
+    USERDATA_PATH="$SD/.userdata/mlp1" LOGS_PATH="$SD/.userdata/mlp1/logs" \
+    BIOS_PATH="$SD/BIOS" UMRK_INTERNAL_DATA_PATH="$SD/.umrk/mlp1" \
+    UMRK_RUNTIME_PATH="$WORK/runtime" FUN_HOOK=0 \
+    FUN_DRASTIC_STUB_REPORT="$REPORT" \
+    FUN_DRASTIC_STUB_WRITE_SAVE="Mario Kart DS (USA Australia.sram" \
+    "$PKG/launch.sh" "$TAGGED" >/dev/null 2>&1
+check "import uses the truncated name the emulator will look for" \
+    test -f "$FD_SAVES/Mario Kart DS (USA Australia.sram"
+check "import does not use the full ROM name" \
+    test ! -e "$FD_SAVES/Mario Kart DS (USA Australia) (EnFrDeEsIt).sram"
+check_contains "export lands under the full ROM name the other package reads" \
+    "$PRIMARY_BACKUP/Mario Kart DS (USA Australia) (EnFrDeEsIt).dsv" "fun-drastic-save"
+check "no junk save under the truncated name" \
+    test ! -e "$PRIMARY_BACKUP/Mario Kart DS (USA Australia.dsv"
+
+echo "== a changed naming rule is caught, not silently skipped =="
+rm -f "$FD_SAVES"/*.sram "$PRIMARY_BACKUP/Unexpected Name.dsv"
+UNEXPECTED="$SD/Roms/NDS/Unexpected Name.nds"
+printf 'rom' >"$UNEXPECTED"
+printf 'primary' >"$PRIMARY_BACKUP/Unexpected Name.dsv"
+env -u SDL_JOYSTICK_DEVICE PLATFORM=mlp1 SDCARD_PATH="$SD" \
+    USERDATA_PATH="$SD/.userdata/mlp1" LOGS_PATH="$SD/.userdata/mlp1/logs" \
+    BIOS_PATH="$SD/BIOS" UMRK_INTERNAL_DATA_PATH="$SD/.umrk/mlp1" \
+    UMRK_RUNTIME_PATH="$WORK/runtime" FUN_HOOK=0 \
+    FUN_DRASTIC_STUB_REPORT="$REPORT" \
+    FUN_DRASTIC_STUB_WRITE_SAVE="Something Else Entirely.sram" \
+    "$PKG/launch.sh" "$UNEXPECTED" >/dev/null 2>&1
+check_contains "the mismatch is logged" "$LOG" "the naming rule has changed"
+check_contains "the round trip still completes" \
+    "$PRIMARY_BACKUP/Unexpected Name.dsv" "fun-drastic-save"
+
 echo "== sharing can be switched off =="
-rm -f "$PRIMARY_BACKUP/Exported.dsv" "$STATE/backup/Exported.dsv"
+rm -f "$PRIMARY_BACKUP/$ROM_BASE.dsv" "$FD_SAVES/$ROM_BASE.sram"
 run_launcher FUN_DRASTIC_SHARE_SAVES=0 \
-    FUN_DRASTIC_STUB_WRITE_SAVE="Private.dsv" >/dev/null 2>&1
+    FUN_DRASTIC_STUB_WRITE_SAVE="$ROM_BASE.sram" >/dev/null 2>&1
 check "no export when sharing is disabled" \
-    test ! -e "$PRIMARY_BACKUP/Private.dsv"
+    test ! -e "$PRIMARY_BACKUP/$ROM_BASE.dsv"
 
 # --- exit status ------------------------------------------------------------
 

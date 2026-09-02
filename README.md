@@ -22,21 +22,29 @@ Two properties of that hook drive most of the packaging:
 1. **The whole frontend lives in the hook.** None of the steward package's
    `res/` menu arrangement or its `SDL_VIDEODRIVER=NDS` custom backend applies.
    Fun DraStic runs the stock SDL2 Wayland driver.
-2. **File I/O is not intercepted.** The hook interposes SDL calls only - no
-   `open`, `fopen`, `stat`, or `access`. So `drastic64` still resolves its data
-   relative to the working directory, and the hook resolves its own assets from
-   `$FUN_DRASTIC_DIR`. Nothing can be virtualized away.
+2. **Runtime data has three owners, not one.** The hook's exported symbols are
+   all SDL, so it looks at first like it cannot touch file paths - but it also
+   interposes `__libc_start_main`, and it rewrites where saves and savestates
+   go before `main` runs. Confirmed on an MLP1: `drastic64` still resolves most
+   of its data relative to the working directory, the hook resolves its own
+   assets from `$FUN_DRASTIC_DIR`, and saves land in Leaf's public `Saves/`
+   folder instead of the working directory's `backup/`.
 
-That splits runtime data between two owners, and the launch wrapper seeds both:
+That splits runtime data three ways, and the launch wrapper has to serve all of
+it:
 
-| Owner | Paths, relative to the state root |
+| Owner | Paths |
 | --- | --- |
-| `drastic64`, via the working directory | `config/`, `system/`, `savestates/`, `backup/`, `microphone/`, `game_database.xml`, `usrcheat.dat` |
+| `drastic64`, via the working directory | `config/`, `system/`, `microphone/`, `game_database.xml`, `usrcheat.dat`, and the `profiles/` `unzip_cache/` `input_record/` `cheats/` `slot2/` `scripts/` chain |
 | the hook, via `$FUN_DRASTIC_DIR` | `fonts/`, `language/`, `themes/`, `Overlays/`, `res/cursor/` |
+| the hook, via `$SDCARD_PATH` | `Saves/NDS/<rom>.sram`, `Saves/NDS/states/`, `Saves/NDS/previews/` |
 
-The vendor launcher seeds only the first half. On a clean state root that
-leaves the menu with no font and no translations, which is why the second half
-is not optional and has no fallback.
+The vendor launcher seeds only the first group. On a clean state root that
+leaves the menu with no font and no translations, which is why the second is
+not optional and has no fallback. The third is not seeded at all - the emulator
+creates it - but it is where the shared-save mirror has to work, and it is
+`$SDCARD_PATH`-relative rather than state-root-relative, so it follows the card
+Leaf resolved rather than the emulator's private tree.
 
 ## Build
 
@@ -86,17 +94,52 @@ three filenames outright.
 
 ## Saves
 
-In-game `.dsv` saves are **shared** with the primary DraStic package. The two
-emulators are the same binary, so the format is guaranteed compatible, and a
+In-game saves are **shared** with the primary DraStic package. The two
+emulators are the same binary, so the format is byte-for-byte identical, and a
 game switched between them keeps its progress.
 
-`drastic64` resolves `backup/` relative to its working directory with no
-override, and the SD card is FAT32, so there is no shared inode to point both
-at. The wrapper mirrors instead: newest-wins in before launch, newest-wins out
-after exit. Fun DraStic owns both directions, which is why the primary DraStic
-package needs no change. Set `FUN_DRASTIC_SHARE_SAVES=0` to keep them apart.
+Where each one puts that save is not identical, which is the whole difficulty:
+
+| | in-game save | savestates |
+| --- | --- | --- |
+| primary DraStic | `<its state root>/backup/<rom name>.dsv` | `<its state root>/savestates/` |
+| Fun DraStic | `$SDCARD_PATH/Saves/NDS/<rom name>.sram` | `$SDCARD_PATH/Saves/NDS/states/` |
+
+The hook rewrites the save and savestate paths at startup, so Fun DraStic
+writes into Leaf's public `Saves/` folder and never touches `backup/`. Both
+files carry the same DeSmuME footer and the same length; only the directory and
+the extension differ. The card is FAT32, so no symlink can make one file serve
+both names.
+
+The wrapper mirrors instead: newest-wins in before launch, newest-wins out
+after exit, and **only for the ROM being launched** - these are real saves, and
+a session for one game has no business touching another's. Modification times
+are preserved so an unplayed session rewrites nothing. Fun DraStic owns both
+directions, which is why the primary DraStic package needs no change. Set
+`FUN_DRASTIC_SHARE_SAVES=0` to keep them apart.
 
 Configuration and savestates are **not** shared, and are not mirrored.
+
+### The save-name caveat
+
+Fun DraStic does not name the save after the ROM. It cuts the name at the first
+`) (`, which looks like an attempt to strip No-Intro region and language tags
+that stops one character short of the bracket:
+
+```text
+Mario Kart DS (USA, Australia) (En,Fr,De,Es,It).nds
+  -> Saves/NDS/Mario Kart DS (USA, Australia.sram
+```
+
+A name with one bracketed tag, or none, is left alone. The wrapper reproduces
+this rule so the import lands where the emulator will look for it, and always
+writes the export back under the ROM's own name so the other package finds it.
+
+The rule is reverse-engineered from an MLP1, not documented, so the wrapper
+also checks it: if the session writes a `.sram` under a name it did not
+predict, that file is exported anyway and a warning naming both goes in the
+log. A rule change degrades to a logged surprise rather than silently losing a
+save. Upstream fixing the truncation is on the wishlist.
 
 ## Wrapper corrections
 

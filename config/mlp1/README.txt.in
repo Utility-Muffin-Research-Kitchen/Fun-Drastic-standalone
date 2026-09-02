@@ -32,9 +32,15 @@ Support log:
 Nothing is written into the release-managed emulator directory at runtime, so
 an update replaces the package cleanly.
 
-In-game saves (.dsv) are shared with the primary DraStic package: they are
-mirrored in before launch and out after exit, newest wins. Configuration and
-savestates are not shared.
+In-game saves are shared with the primary DraStic package. Fun DraStic keeps
+them in Saves/NDS as .sram; the primary DraStic package keeps them in its own
+state directory as .dsv. Same bytes, different name. The launcher mirrors the
+launched game's save in before launch and out after exit, newest wins.
+Configuration and savestates are not shared.
+
+Note that Fun DraStic cuts a save's name at the first ") (", so a ROM named
+"Game (USA) (En,Fr).nds" saves as "Game (USA.sram". That is upstream behaviour;
+the launcher follows it so sharing still works.
 
 Support diagnostics
 -------------------
