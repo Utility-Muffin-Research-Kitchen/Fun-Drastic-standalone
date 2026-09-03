@@ -46,6 +46,8 @@ mkdir -p "$PKG"/{bin,lib,config,fonts,language,themes,res/cursor,system,micropho
 install -m 0755 "$ROOT_DIR/config/mlp1/launch.sh" "$PKG/launch.sh"
 install -m 0644 "$ROOT_DIR/config/mlp1/defaults/config.version" \
     "$PKG/defaults/config.version"
+install -m 0644 "$ROOT_DIR/config/mlp1/defaults/user_emu.cfg" \
+    "$PKG/defaults/user_emu.cfg"
 install -m 0644 "$ROOT_DIR/config/mlp1/BIOS-README.txt" "$PKG/system/BIOS-README.txt"
 
 for lib in libfundrastic.so libSDL2-2.0.so.0 libxkbcommon.so.0 \
@@ -151,9 +153,18 @@ echo "== hook assets resolved from FUN_DRASTIC_DIR =="
 # This is the half the vendor launcher omits. Without it the menu has no font.
 for relative in fonts/Nunito-Bold.ttf fonts/Translate.otf language/template.txt \
                 themes/custom.cfg Overlays/960x720/Template/aspect_single.png \
-                res/cursor/1.png; do
+                res/cursor/1.png user_emu.cfg; do
     check "seeded $relative" test -e "$STATE/$relative"
 done
+
+# The theme default only means anything if it survives seeding verbatim, and it
+# must never be re-applied over a player's own choice.
+check "seeded theme default is the Leaf slot" \
+    grep -qx "theme 5" "$STATE/user_emu.cfg"
+printf 'theme 2\n' >"$STATE/user_emu.cfg"
+run_launcher >/dev/null 2>&1
+check "an existing theme choice is left alone" \
+    grep -qx "theme 2" "$STATE/user_emu.cfg"
 
 echo "== emulator environment =="
 check_contains "working directory is the state root" "$REPORT" "cwd=$STATE"

@@ -153,6 +153,8 @@ install -m 0755 "$ROOT_DIR/config/mlp1/launch.sh" "$OUTPUT_DIR/launch.sh"
 mkdir -p "$OUTPUT_DIR/defaults"
 install -m 0644 "$ROOT_DIR/config/mlp1/defaults/config.version" \
     "$OUTPUT_DIR/defaults/config.version"
+install -m 0644 "$ROOT_DIR/config/mlp1/defaults/user_emu.cfg" \
+    "$OUTPUT_DIR/defaults/user_emu.cfg"
 install -m 0644 "$ROOT_DIR/config/mlp1/BIOS-README.txt" \
     "$OUTPUT_DIR/system/BIOS-README.txt"
 
