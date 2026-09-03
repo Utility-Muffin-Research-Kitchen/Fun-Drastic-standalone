@@ -1,0 +1,53 @@
+Fun DraStic for Leaf on MLP1
+============================
+
+Fun DraStic is by tenlevels. It is a frontend - menus, overlays, screen
+layouts, themes and presentation - attached to the closed-source DraStic
+emulator through an LD_PRELOAD SDL hook (lib/libfundrastic.so). The emulator
+binary itself, bin/drastic64, is the same prebuilt aarch64 DraStic binary the
+primary DraStic package ships, byte for byte. Game compatibility, accuracy and
+speed are therefore identical between the two; what differs is the interface.
+
+The default Nintendo DS emulator on Leaf is the separate DraStic package built
+on Steward Fu's steward-fu/nds project. Fun DraStic is an alternate you can
+select per game. They are different packages by different authors and neither
+is a build of the other.
+
+Source archive: @ARCHIVE_NAME@
+Archive SHA-256: @ARCHIVE_SHA256@
+
+BIOS
+----
+DraStic's own free replacement BIOS ships in system/ and covers most games.
+The optional Nintendo dumps are never included; see system/BIOS-README.txt for
+the filenames and where to put them.
+
+Where things live
+-----------------
+State, configuration, savestates and in-game saves:
+  .userdata/<platform>/fun-drastic
+Support log:
+  .userdata/<platform>/logs/fun-drastic.log
+
+Nothing is written into the release-managed emulator directory at runtime, so
+an update replaces the package cleanly.
+
+In-game saves are shared with the primary DraStic package. Fun DraStic keeps
+them in Saves/NDS as .sram; the primary DraStic package keeps them in its own
+state directory as .dsv. Same bytes, different name. The launcher mirrors the
+launched game's save in before launch and out after exit, newest wins.
+Configuration and savestates are not shared.
+
+Note that Fun DraStic cuts a save's name at the first ") (", so a ROM named
+"Game (USA) (En,Fr).nds" saves as "Game (USA.sram". That is upstream behaviour;
+the launcher follows it so sharing still works.
+
+Support diagnostics
+-------------------
+These are for maintainers and are off by default:
+
+  FUN_HOOK=0                 run drastic64 without the Fun DraStic frontend
+  FUN_EVLOG=1                log input events and frame pacing
+  FUN_FF_SPEED=2..8          fast-forward multiplier
+  FUN_DRASTIC_SHARE_SAVES=0  keep .dsv saves out of the primary DraStic package
+  FUN_DRASTIC_BIOS_REFRESH=1 re-copy user BIOS files over the runtime copies
