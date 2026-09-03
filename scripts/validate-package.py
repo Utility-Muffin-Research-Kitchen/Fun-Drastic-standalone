@@ -27,6 +27,7 @@ REQUIRED_FILES = (
     "manifest.json",
     "README.txt",
     "defaults/config.version",
+    "defaults/user_emu.cfg",
     "bin/drastic64",
     "lib/libSDL2-2.0.so.0",
     "lib/libasound.so.2",

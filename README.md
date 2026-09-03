@@ -37,6 +37,7 @@ it:
 | --- | --- |
 | `drastic64`, via the working directory | `config/`, `system/`, `microphone/`, `game_database.xml`, `usrcheat.dat`, and the `profiles/` `unzip_cache/` `input_record/` `cheats/` `slot2/` `scripts/` chain |
 | the hook, via `$FUN_DRASTIC_DIR` | `fonts/`, `language/`, `themes/`, `Overlays/`, `res/cursor/` |
+| the hook, via the working directory | `user_emu.cfg`, `user_controls.cfg`, `user_shortcuts.cfg` |
 | the hook, via `$SDCARD_PATH` | `Saves/NDS/<rom>.sram`, `Saves/NDS/states/`, `Saves/NDS/previews/` |
 
 The vendor launcher seeds only the first group. On a clean state root that
@@ -151,6 +152,7 @@ here. Upstream is frozen, so these are permanent, not stopgaps:
 | State under `.umrk/mlp1/fundrastic` (`UMRK_INTERNAL_DATA_PATH`, launcher-owned control state) | `USERDATA_PATH/fun-drastic` |
 | Support log written beside the installed package | `LOGS_PATH/fun-drastic.log`, scratch under `UMRK_RUNTIME_PATH` |
 | `drastic.cfg` refreshed from the package every boot | Versioned migration through `defaults/config.version` |
+| menu starts on the hook's own first theme | `defaults/user_emu.cfg` seeds `theme 5`, the CUSTOM slot that `themes/custom.cfg` names "Leaf" |
 | `SDL_JOYSTICK_DEVICE` overwritten with `/dev/input/event5` | Inherited roster always wins; the direct-launch fallback resolves the calibrated virtual pad dynamically |
 | Seeds only the `drastic64` half | Seeds both halves |
 

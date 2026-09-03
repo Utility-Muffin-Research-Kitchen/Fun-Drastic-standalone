@@ -132,6 +132,17 @@ seed_if_missing "$ROOT_DIR/themes" "$STATE_ROOT/themes"
 seed_if_missing "$ROOT_DIR/Overlays" "$STATE_ROOT/Overlays"
 seed_if_missing "$ROOT_DIR/res" "$STATE_ROOT/res"
 
+# The hook's own settings file, and the only lever for which theme Fun DraStic
+# starts on. It is seeded rather than refreshed: once a player has picked a
+# theme, that choice is theirs.
+#
+# theme 5 is the CUSTOM slot, which themes/custom.cfg names "Leaf". The hook
+# indexes its built-in themes 0..4 (MARIO KOOPA PEACH WARIO YOSHI) and puts
+# CUSTOM last, so 5 is correct only while there are exactly five built-ins -
+# g_theme_names in libfundrastic.so is 40 bytes, five pointers. A hook build
+# that adds a theme moves the CUSTOM slot and this default has to move with it.
+seed_if_missing "$ROOT_DIR/defaults/user_emu.cfg" "$STATE_ROOT/user_emu.cfg"
+
 for required in fonts/Nunito-Bold.ttf language themes Overlays res/cursor; do
     if [ ! -e "$STATE_ROOT/$required" ]; then
         log "WARNING: hook asset missing after seeding: $required"
