@@ -479,6 +479,106 @@ fi
 
 # --- launch -----------------------------------------------------------------
 
+# --- archive extraction -----------------------------------------------------
+
+# Fun DraStic's cheat menu reads the NDS game code straight out of the file it
+# is handed. cheat_parse_usrcheat() in the hook opens the ROM path, reads the
+# first 32 bytes, and takes the four at offset 0x0C. Given a .zip it reads the
+# ZIP local header instead - "Contra 4 (USA).zip" yields 98 21 8e 4b where the
+# ROM itself has "YCTE" - so the lookup matches nothing in usrcheat.dat and the
+# menu says "No cheats found for this game." for every archived ROM. Measured
+# on an MLP1. drastic64 is not affected: it unzips first and then knows the
+# code, which is why the primary DraStic package lists cheats for the same
+# file.
+#
+# So the archive is opened here and drastic64 is handed the .nds. That is not
+# extra work - drastic64 already extracted every archived ROM into unzip_cache
+# on its own, and now it does not have to.
+#
+# The extracted file MUST keep the ROM's base name. The hook derives the save
+# name from the path it is given, so "Contra 4 (USA).nds" and the .zip it came
+# from both save as "Contra 4 (USA).sram" and saves written before this change
+# keep working. "unzipped_rom.nds" would orphan every one of them.
+#
+# Only .zip. There is no 7z tool on the device, and handing the archive over
+# untouched is exactly what happened before this block existed, so any other
+# archive keeps the old behaviour rather than failing to launch.
+UNZIP_ROMS="${FUN_DRASTIC_UNZIP_ROMS:-1}"
+EXTRACT_DIR="$STATE_ROOT/unzip_cache/leaf"
+LAUNCH_ROM_PATH="$ROM_PATH"
+
+# One slot, like drastic64's own cache. A 32 MB ROM per game played would grow
+# without bound otherwise, and the card is the user's.
+extract_zip_rom() {
+    local dst="$EXTRACT_DIR/$ROM_BASE_NAME.nds"
+    local found="" entry
+
+    if ! command -v unzip >/dev/null 2>&1; then
+        log "WARNING: no unzip on this system; launching the archive as-is (cheats will not resolve)"
+        return 1
+    fi
+
+    if [ -f "$dst" ] && [ "$dst" -nt "$ROM_PATH" ]; then
+        log "reusing extracted ROM: $ROM_BASE_NAME.nds"
+        LAUNCH_ROM_PATH="$dst"
+        return 0
+    fi
+
+    rm -rf "$EXTRACT_DIR"
+    mkdir -p "$EXTRACT_DIR" || return 1
+
+    # Extract everything flat rather than naming a member: BusyBox unzip takes
+    # member arguments as glob patterns, and No-Intro names are full of
+    # brackets.
+    if ! unzip -o -j -q "$ROM_PATH" -d "$EXTRACT_DIR" >>"$RUN_LOG" 2>&1; then
+        log "WARNING: could not extract $ROM_BASE_NAME; launching the archive as-is"
+        rm -rf "$EXTRACT_DIR"
+        return 1
+    fi
+
+    # A macOS-authored zip carries ._ resource forks beside the ROM; they are
+    # not ROMs and must not be mistaken for one.
+    for entry in "$EXTRACT_DIR"/*; do
+        [ -f "$entry" ] || continue
+        case "$(basename "$entry")" in
+            ._*) rm -f "$entry"; continue ;;
+        esac
+        case "$entry" in
+            *.nds|*.NDS|*.Nds)
+                if [ -n "$found" ]; then
+                    log "WARNING: $ROM_BASE_NAME holds more than one .nds; launching the archive as-is"
+                    rm -rf "$EXTRACT_DIR"
+                    return 1
+                fi
+                found="$entry"
+                ;;
+            *) rm -f "$entry" ;;
+        esac
+    done
+
+    if [ -z "$found" ]; then
+        log "WARNING: no .nds inside $ROM_BASE_NAME; launching the archive as-is"
+        rm -rf "$EXTRACT_DIR"
+        return 1
+    fi
+
+    if [ "$found" != "$dst" ] && ! mv -f "$found" "$dst"; then
+        log "WARNING: could not name the extracted ROM; launching the archive as-is"
+        rm -rf "$EXTRACT_DIR"
+        return 1
+    fi
+
+    log "extracted for the cheat lookup: $ROM_BASE_NAME.nds"
+    LAUNCH_ROM_PATH="$dst"
+    return 0
+}
+
+if [ "$UNZIP_ROMS" = "1" ]; then
+    case "$ROM_PATH" in
+        *.zip|*.ZIP|*.Zip) extract_zip_rom || LAUNCH_ROM_PATH="$ROM_PATH" ;;
+    esac
+fi
+
 DRASTIC_BIN="$ROOT_DIR/bin/drastic64"
 for required in "$DRASTIC_BIN" "$ROOT_DIR/lib/libfundrastic.so" \
                 "$ROOT_DIR/lib/libSDL2-2.0.so.0" "$ROOT_DIR/lib/libxkbcommon.so.0" \
@@ -518,7 +618,7 @@ trap 'forward_signal HUP' HUP
 
 set +e
 LD_LIBRARY_PATH="$ROOT_DIR/lib" LD_PRELOAD="$PRELOAD" \
-    "$DRASTIC_BIN" "$ROM_PATH" >>"$RUN_LOG" 2>&1 &
+    "$DRASTIC_BIN" "$LAUNCH_ROM_PATH" >>"$RUN_LOG" 2>&1 &
 emulator_pid=$!
 wait "$emulator_pid"
 rc=$?

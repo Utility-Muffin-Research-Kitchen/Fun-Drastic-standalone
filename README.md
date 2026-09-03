@@ -50,9 +50,10 @@ Leaf resolved rather than the emulator's private tree.
 ## Build
 
 Upstream is frozen - tenlevels is not working on Fun DraStic in the near
-future - and the archive has no authorized public home yet. `upstream.env`
-therefore pins the SHA-256 only, and the reviewed archive is supplied
-explicitly:
+future - so there is no branch or tag to track, only a single binary archive.
+It is hosted as this repository's own release asset and `upstream.env` pins
+both that URL and the SHA-256, so `make package-mlp1` needs no arguments. A
+local copy can still be supplied, and is still hash-checked:
 
 ```sh
 make package-mlp1 FUN_DRASTIC_ARCHIVE=/absolute/path/to/drastic.zip
@@ -153,6 +154,7 @@ here. Upstream is frozen, so these are permanent, not stopgaps:
 | Support log written beside the installed package | `LOGS_PATH/fun-drastic.log`, scratch under `UMRK_RUNTIME_PATH` |
 | `drastic.cfg` refreshed from the package every boot | Versioned migration through `defaults/config.version` |
 | menu starts on the hook's own first theme | `defaults/user_emu.cfg` seeds `theme 5`, the CUSTOM slot that `themes/custom.cfg` names "Leaf" |
+| hands `drastic64` the archive, leaving the hook unable to read the game code | Extracts a `.zip` first, keeping the ROM's base name, so the cheat menu resolves |
 | `SDL_JOYSTICK_DEVICE` overwritten with `/dev/input/event5` | Inherited roster always wins; the direct-launch fallback resolves the calibrated virtual pad dynamically |
 | Seeds only the `drastic64` half | Seeds both halves |
 

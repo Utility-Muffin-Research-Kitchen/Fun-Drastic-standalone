@@ -122,7 +122,7 @@ run_launcher() {
         FUN_HOOK=0 \
         FUN_DRASTIC_STUB_REPORT="$REPORT" \
         "$@" \
-        "$PKG/launch.sh" "$ROM"
+        "$PKG/launch.sh" "${LAUNCH_ROM:-$ROM}"
 }
 
 # --- first launch, clean state, no Nintendo BIOS ----------------------------
@@ -335,6 +335,67 @@ set -e
 check "non-zero exit code reaches Jawaka" test "$rc" -eq 3
 
 # --- argument handling ------------------------------------------------------
+
+echo "== archived ROMs are extracted before launch =="
+
+# The hook reads the NDS game code out of the file it is handed, so a .zip has
+# to be opened here or the cheat menu can never match anything. The base name
+# has to survive the extraction, because the save name is derived from it.
+check "zip is available to build the fixture" bash -c 'command -v zip >/dev/null'
+
+ZIP_BASE="Contra 4 (USA) (Rev 1)"
+ZIP_ROM="$SD/Roms/NDS/$ZIP_BASE.zip"
+printf 'nds-rom-body' >"$WORK/$ZIP_BASE.nds"
+(cd "$WORK" && zip -q "$ZIP_ROM" "$ZIP_BASE.nds")
+
+EXTRACTED="$STATE/unzip_cache/leaf/$ZIP_BASE.nds"
+LAUNCH_ROM="$ZIP_ROM" run_launcher >/dev/null 2>&1
+check_contains "a zipped ROM is launched as the extracted .nds" "$REPORT" \
+    "argv=$EXTRACTED"
+check "the extracted ROM keeps the archive's base name" test -f "$EXTRACTED"
+check "the extracted ROM is the archive's content" \
+    test "$(cat "$EXTRACTED")" = "nds-rom-body"
+
+# The whole point of keeping the base name. The save name is derived from the
+# ROM the player picked, never from the path handed to the emulator, so
+# extraction must not move it: "Contra 4 (USA) (Rev 1)" cuts at the first ") ("
+# either way.
+check_contains "the save name still comes from the archive's own name" "$LOG" \
+    "save 'Contra 4 (USA'"
+
+# A second game must not leave the first one's 32 MB behind.
+ZIP_BASE2="Metal Slug 7 (Europe)"
+ZIP_ROM2="$SD/Roms/NDS/$ZIP_BASE2.zip"
+printf 'other-rom' >"$WORK/$ZIP_BASE2.nds"
+(cd "$WORK" && zip -q "$ZIP_ROM2" "$ZIP_BASE2.nds")
+LAUNCH_ROM="$ZIP_ROM2" run_launcher >/dev/null 2>&1
+check "the extraction cache holds one ROM at a time" \
+    test ! -e "$EXTRACTED"
+check "the newly launched ROM is the one cached" \
+    test -f "$STATE/unzip_cache/leaf/$ZIP_BASE2.nds"
+
+echo "== archives that cannot be extracted still launch =="
+
+# Every one of these fell back to the old behaviour before this block existed,
+# and a fallback that fails to launch would be worse than no cheats.
+NO_ROM_ZIP="$SD/Roms/NDS/Empty (USA).zip"
+printf 'readme' >"$WORK/readme.txt"
+(cd "$WORK" && zip -q "$NO_ROM_ZIP" "readme.txt")
+LAUNCH_ROM="$NO_ROM_ZIP" run_launcher >/dev/null 2>&1
+check_contains "a zip with no .nds is handed over as-is" "$REPORT" \
+    "argv=$NO_ROM_ZIP"
+check_contains "and says why" "$LOG" "no .nds inside"
+
+SEVEN_ZIP="$SD/Roms/NDS/Some Game (USA).7z"
+printf 'not-a-zip' >"$SEVEN_ZIP"
+LAUNCH_ROM="$SEVEN_ZIP" run_launcher >/dev/null 2>&1
+check_contains "a .7z is left alone" "$REPORT" "argv=$SEVEN_ZIP"
+
+LAUNCH_ROM="$ZIP_ROM" FUN_DRASTIC_UNZIP_ROMS=0 run_launcher >/dev/null 2>&1
+check_contains "extraction can be switched off" "$REPORT" "argv=$ZIP_ROM"
+
+LAUNCH_ROM="$ROM" run_launcher >/dev/null 2>&1
+check_contains "a raw .nds is untouched" "$REPORT" "argv=$ROM"
 
 echo "== argument handling =="
 set +e
