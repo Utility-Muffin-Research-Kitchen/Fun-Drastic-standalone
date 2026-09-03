@@ -26,6 +26,21 @@ It does not transfer ownership and it does not make the material open source.
 > the default release list; the same packaging still supports an explicitly
 > supplied local archive for authorized device-local use.
 
+## Archival reference
+
+The reviewed archive is hosted on this repository's own releases, under the
+hosting permission recorded above:
+
+| Field | Value |
+| --- | --- |
+| Release | `upstream/drastic-2026-09-01` |
+| Asset | `drastic.zip` |
+| SHA-256 | `63dcf22d5ab06db0ca797567aa6597ce8b1e99080d1b86f92648cc155641d302` |
+
+`upstream.env` pins that URL and hash together. A new archive needs a new
+release and a re-pin of both; the packaging refuses any archive whose hash does
+not match.
+
 ## Component ownership
 
 The package is not a single work. Each component keeps its own terms.
