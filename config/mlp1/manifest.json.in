@@ -9,8 +9,10 @@
   "config_schema_version": @CONFIG_VERSION@,
   "target_soc": "rk3566",
   "target_cpu": "cortex-a55",
-  "source_archive": "@ARCHIVE_NAME@",
-  "source_archive_sha256": "@ARCHIVE_SHA256@",
+  "source_repo": "@SOURCE_REPO@",
+  "source_commit": "@SOURCE_COMMIT@",
+  "source_funhook_sha256": "@FUNHOOK_SHA256@",
+  "hook_built_from_source": true,
   "binary": "bin/drastic64",
   "binary_sha256": "@BINARY_SHA256@",
   "entrypoint": "launch.sh",
@@ -32,7 +34,8 @@
   ],
   "bios_note": "DraStic's own free replacement BIOS. The Nintendo dumps (nds_bios_arm7.bin, nds_bios_arm9.bin, nds_firmware.bin) are user-supplied and never shipped.",
   "authorization": "licenses/DISTRIBUTION-BASIS.md",
-  "distribution_status": "proprietary-used-with-permission",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "distribution_status": "noncommercial-license",
   "exceptions": [
     {
       "artifact": "bin/drastic64",
@@ -40,7 +43,7 @@
     },
     {
       "artifact": "lib/libfundrastic.so",
-      "reason": "prebuilt Fun DraStic frontend hook by @AUTHOR@; not built by UMRK"
+      "reason": "Fun DraStic frontend hook by @AUTHOR@, cross-built here from his source"
     }
   ],
   "files": []

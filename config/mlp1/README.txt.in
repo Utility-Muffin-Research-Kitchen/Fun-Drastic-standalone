@@ -13,8 +13,17 @@ on Steward Fu's steward-fu/nds project. Fun DraStic is an alternate you can
 select per game. They are different packages by different authors and neither
 is a build of the other.
 
-Source archive: @ARCHIVE_NAME@
-Archive SHA-256: @ARCHIVE_SHA256@
+The hook is compiled from tenlevels' source, not lifted from a binary drop:
+
+  Source:        @SOURCE_REPO@
+  Source commit: @SOURCE_COMMIT@
+  funhook.c:     @FUNHOOK_SHA256@
+  Built hook:    @HOOK_SHA256@
+
+Fun DraStic's own code is under the PolyForm Noncommercial License 1.0.0
+(licenses/). DraStic, its free BIOS and the databases are Exophase's
+proprietary freeware and keep their own terms - see licenses/CREDITS.md,
+which is tenlevels' own credits file.
 
 BIOS
 ----
