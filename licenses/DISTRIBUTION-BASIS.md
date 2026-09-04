@@ -1,45 +1,43 @@
 # Fun DraStic distribution basis
 
-Fun DraStic is proprietary material redistributed with permission. It is not
-open source and no open-source license applies to it. This file records the
-basis on which the package is built and shipped.
+**Fun DraStic is tenlevels' work.** This repository packages it for Leaf on the
+MLP1; it does not author it. The hook, the menus, the themes, the overlays and
+the MLP1 bring-up are his. This file records the terms the package is built and
+shipped under.
 
-## Permission
+## Licence
 
-tenlevels, the author of Fun DraStic, gave the project written permission to
-use and redistribute Fun DraStic as part of Leaf. The permission was given in
-a private Discord message; a copy is preserved by the project maintainer with
-the sender identity and date. The private message itself is not published.
+Fun DraStic's own code and packaging are under the **PolyForm Noncommercial
+License 1.0.0**, with the required notice:
 
-Permission covers:
+> Copyright (c) 2026 The Fun Drastic authors
 
-- hosting the reviewed source archive or a package derived from it;
-- bundling that package in downloadable Leaf releases;
-- the packaging-only changes described in this repository (a rewritten launch
-  wrapper, an allowlisted file set, generated manifest and notices).
+The full text ships in the package as `licenses/FUN-DRASTIC-LICENSE.txt`, taken
+verbatim from his source tree. Use, modification and sharing are permitted for
+**noncommercial purposes only**.
 
-It does not transfer ownership and it does not make the material open source.
+That is a change from how this package started. It was first built from a
+binary drop redistributed under written permission given in a private Discord
+message. tenlevels then donated the source under PolyForm Noncommercial, which
+supersedes that arrangement: the basis is now a published licence anyone can
+read and check, rather than a private message only the maintainer holds.
 
-> **Release gate.** Before a public Leaf release includes Fun DraStic, confirm
-> the preserved permission still covers the list above and record the archival
-> reference in the release provenance. If it does not, Fun DraStic stays out of
-> the default release list; the same packaging still supports an explicitly
-> supplied local archive for authorized device-local use.
+> **Release gate.** Any Leaf release bundling Fun DraStic inherits the
+> noncommercial restriction. Leaf must not be sold, bundled with hardware for
+> sale, or otherwise commercially exploited while this package is in the
+> release list. If that changes, Fun DraStic comes out of the default release
+> list; the packaging still supports a local build for noncommercial use.
 
-## Archival reference
+## What is built here, and what is not
 
-The reviewed archive is hosted on this repository's own releases, under the
-hosting permission recorded above:
+`lib/libfundrastic.so` is cross-compiled from tenlevels' `src/funhook.c` with
+the MLP1 toolchain — the manifest records the source repository, commit and the
+SHA-256 of the exact `funhook.c` it came from. Building it from source rather
+than shipping his binary is the only reason this repository can claim to know
+what is in it.
 
-| Field | Value |
-| --- | --- |
-| Release | `upstream/drastic-2026-09-01` |
-| Asset | `drastic.zip` |
-| SHA-256 | `63dcf22d5ab06db0ca797567aa6597ce8b1e99080d1b86f92648cc155641d302` |
-
-`upstream.env` pins that URL and hash together. A new archive needs a new
-release and a re-pin of both; the packaging refuses any archive whose hash does
-not match.
+Everything else that is not ours is redistributed unmodified and pinned by
+hash in `upstream.env`, because we do not compile it.
 
 ## Component ownership
 
@@ -47,12 +45,12 @@ The package is not a single work. Each component keeps its own terms.
 
 | Component | Owner / origin | Terms |
 | --- | --- | --- |
-| `lib/libfundrastic.so` (the Fun DraStic frontend hook) | tenlevels | Proprietary, used with permission |
-| `Overlays/`, `themes/`, `res/cursor/` (presentation assets) | tenlevels | Proprietary, used with permission |
+| `lib/libfundrastic.so` (the Fun DraStic hook) | tenlevels | PolyForm Noncommercial 1.0.0; built here from his source |
+| `Overlays/`, `themes/`, `res/cursor/`, `language/*.txt` (presentation assets) | tenlevels and contributors | PolyForm Noncommercial 1.0.0 |
 | `bin/drastic64` | Exophase / DraStic | Proprietary closed-source emulator; the same prebuilt binary the primary DraStic package ships |
 | `system/drastic_bios_arm7.bin`, `system/drastic_bios_arm9.bin` | DraStic | DraStic's own free replacement BIOS, distributed with DraStic |
-| `config/usrcheat.dat`, `game_database.xml` | DraStic distribution | Redistributed as part of the DraStic data set |
-| `language/*.txt` | tenlevels and contributors | Proprietary, used with permission |
+| `game_database.xml` | DraStic distribution | Redistributed as part of the DraStic data set |
+| `config/usrcheat.dat` | the DS cheat scene | Community-maintained cheat database, assembled over many years |
 | `fonts/Nunito-Bold.ttf` | The Nunito Project Authors | SIL Open Font License 1.1 |
 | `fonts/Translate.otf` | Adobe / the Noto Project (this is Noto Sans CJK SC Regular under another filename) | SIL Open Font License 1.1 |
 | `lib/libSDL2-2.0.so.0` | SDL | zlib license |
@@ -61,9 +59,12 @@ The package is not a single work. Each component keeps its own terms.
 | `lib/libwayland-cursor.so.0` | Wayland project | MIT |
 | Packaging code in this repository | UMRK | See `LICENSE` |
 
-tenlevels' permission is attributed only to the material tenlevels owns or is
-authorized to redistribute. It is not a license for `bin/drastic64`, the
-bundled libraries, or the fonts.
+The PolyForm licence covers what tenlevels owns. It is not a licence for
+`bin/drastic64`, the DraStic databases, the bundled libraries, or the fonts —
+`licenses/CREDITS.md`, which is his own credits file, is the authoritative list
+of what Fun DraStic is built on.
+
+Fun DraStic is not affiliated with or endorsed by Exophase or Nintendo.
 
 ## Nintendo BIOS
 

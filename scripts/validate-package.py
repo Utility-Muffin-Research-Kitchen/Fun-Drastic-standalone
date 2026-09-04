@@ -49,6 +49,8 @@ REQUIRED_FILES = (
     "drastic_logo_0.raw",
     "drastic_logo_1.raw",
     "licenses/DISTRIBUTION-BASIS.md",
+    "licenses/FUN-DRASTIC-LICENSE.txt",
+    "licenses/CREDITS.md",
     "licenses/THIRD-PARTY-NOTICES.txt",
 )
 
@@ -181,8 +183,23 @@ def validate(package_dir: Path) -> None:
         if manifest.get(key) != expected:
             fail(f"manifest {key} must be {expected!r}")
 
-    if not SHA256_RE.fullmatch(str(manifest.get("source_archive_sha256", ""))):
-        fail("manifest must record the source archive SHA-256")
+    # The hook is built here, so the manifest has to say which source it came
+    # from. Without this a package built from an unknown tree is
+    # indistinguishable from one built from the mirrored source.
+    if not SHA256_RE.fullmatch(str(manifest.get("source_funhook_sha256", ""))):
+        fail("manifest must record the SHA-256 of the funhook.c it was built from")
+    if manifest.get("hook_built_from_source") is not True:
+        fail("manifest must record that the hook was built from source")
+    if not str(manifest.get("source_repo", "")).startswith("http"):
+        fail("manifest must record where the source came from")
+
+    # Fun DraStic is tenlevels' work under a named public licence. Saying so is
+    # a release gate, not documentation: a package that loses the attribution
+    # or the licence is not one we may ship.
+    if manifest.get("license") != "PolyForm-Noncommercial-1.0.0":
+        fail("manifest must record the PolyForm Noncommercial 1.0.0 licence")
+    if str(manifest.get("author", "")).lower() != "tenlevels":
+        fail("manifest must credit tenlevels as the author")
 
     config_version = int(
         (package_dir / "defaults/config.version").read_text(encoding="utf-8").strip()

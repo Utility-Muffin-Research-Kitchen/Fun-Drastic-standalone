@@ -4,6 +4,14 @@ Packaging for **Fun DraStic by tenlevels** as a second Nintendo DS standalone
 emulator on the Miniloong Pocket 1, alongside - not instead of - the DraStic
 package Leaf already ships.
 
+Fun DraStic is tenlevels' project: he wrote the hook, designed the menus,
+themes and overlays, brought up the MLP1 target, and donated the source so this
+package can be built from it rather than from a binary. Nothing in this
+repository is a fork of his work - it is packaging around it. His source is
+mirrored at
+[Fun-Drastic-src](https://github.com/Utility-Muffin-Research-Kitchen/Fun-Drastic-src),
+and his own credits and licence ship inside every package.
+
 | Role | Core id | Runtime path |
 | --- | --- | --- |
 | Default | `drastic` | `emulators/drastic/launch.sh` |
@@ -49,19 +57,26 @@ Leaf resolved rather than the emulator's private tree.
 
 ## Build
 
-Upstream is frozen - tenlevels is not working on Fun DraStic in the near
-future - so there is no branch or tag to track, only a single binary archive.
-It is hosted as this repository's own release asset and `upstream.env` pins
-both that URL and the SHA-256, so `make package-mlp1` needs no arguments. A
-local copy can still be supplied, and is still hash-checked:
+The hook is compiled from source. `src/funhook.c` lives in the sibling
+`Fun-Drastic-src` checkout - a verbatim mirror of what tenlevels donated - and
+is cross-built with the MLP1 toolchain, the same way the primary DraStic
+package cross-builds `steward-fu-nds`:
 
 ```sh
-make package-mlp1 FUN_DRASTIC_ARCHIVE=/absolute/path/to/drastic.zip
+make package-mlp1                       # sibling ../Fun-Drastic-src
+make package-mlp1 FUN_DRASTIC_SRC_DIR=/path/to/a/working/tree
 ```
 
-The build refuses an archive whose hash does not match the pin. Output lands in
-the ignored `output/mlp1/fun-drastic/`; downloads and extraction stay in the
-ignored `workdir/`.
+Docker is required, for the toolchain image only. `FUN_DRASTIC_BUILD=0`
+packages a hook built earlier, matching `DRASTIC_BUILD=0` in the primary
+DraStic packaging. Output lands in the ignored `output/mlp1/fun-drastic/`; the
+build tree stays in the ignored `workdir/`.
+
+DraStic itself is never built here and never will be: `bin/drastic64`, the free
+BIOS, the game database and the cheat database are Exophase's proprietary
+freeware, redistributed as tenlevels' tree bundles them. Each is pinned by
+SHA-256 in `upstream.env`, so a source drop that quietly swaps the emulator
+fails the build until it is reviewed and re-pinned.
 
 Normally you do not run this directly. Leaf dispatches to it:
 
@@ -71,9 +86,12 @@ make stage-emulator EMULATOR=fun-drastic DEVICE=mlp1
 
 ### What gets packaged
 
-An explicit allowlist in `package-mlp1.sh`, so a file added to a future archive
-cannot enter a release by accident. The launcher, manifest, `README.txt` and
-`system/BIOS-README.txt` are generated here and never taken from the archive.
+An explicit allowlist in `package-mlp1.sh` mapping each package path to its
+source path, so a file added to a future source drop cannot enter a release by
+accident. The launcher, manifest, `README.txt` and `system/BIOS-README.txt` are
+generated here and never taken from upstream. tenlevels' `LICENSE` and
+`CREDITS.md` are copied in verbatim and are release-gated: a package that loses
+them does not ship.
 
 The package is about 35 MB, of which `fonts/Translate.otf` is 16.4 MB and
 `config/usrcheat.dat` is 13.7 MB. The cheat database duplicates one the primary

@@ -97,5 +97,10 @@ Nintendo material.
 
 Fun DraStic (lib/libfundrastic.so and the presentation assets)
 --------------------------------------------------------------
-Copyright (c) tenlevels. Proprietary, redistributed with written permission.
-See DISTRIBUTION-BASIS.md.
+Copyright (c) 2026 The Fun Drastic authors.
+
+Fun DraStic is tenlevels' work, licensed under the PolyForm Noncommercial
+License 1.0.0 - noncommercial use only. The hook shipped here is cross-built
+from his own source; the full licence text is in FUN-DRASTIC-LICENSE.txt and
+his credits file in CREDITS.md, both verbatim from his source tree. See
+DISTRIBUTION-BASIS.md.
