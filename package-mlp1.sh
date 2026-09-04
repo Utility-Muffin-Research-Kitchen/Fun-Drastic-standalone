@@ -88,37 +88,14 @@ verify_sha256 "$SRC/emulator/usrcheat.dat" \
 TOOLCHAIN_IMAGE="${TOOLCHAIN_IMAGE:-ghcr.io/utility-muffin-research-kitchen/mlp1-toolchain:local}"
 HOOK="$BUILD_DIR/libfundrastic.so"
 
-# Local fixes carried on top of upstream, applied to a copy so the source
-# checkout stays exactly what tenlevels sent. Each one is sent to him too; a
-# patch that lands upstream is deleted from here rather than kept forever.
-PATCH_DIR="$ROOT_DIR/patches"
-PATCH_TREE="$BUILD_DIR/src-tree"
-applied_patches=""
-
 if [ "${FUN_DRASTIC_BUILD:-1}" = "1" ]; then
     command -v docker >/dev/null 2>&1 ||
         die "docker not found (needed to cross-build the Fun DraStic hook)"
-    command -v git >/dev/null 2>&1 ||
-        die "git not found (needed to apply the local patches)"
     echo "Building libfundrastic.so from $SRC via $TOOLCHAIN_IMAGE" >&2
-
-    rm -rf "$PATCH_TREE"
-    mkdir -p "$PATCH_TREE" "$BUILD_DIR"
-    cp -R "$SRC/src" "$PATCH_TREE/src"
-
-    for patch in "$PATCH_DIR"/*.patch; do
-        [ -f "$patch" ] || continue
-        name="$(basename "$patch")"
-        (cd "$PATCH_TREE" && git apply -p1 "$patch") ||
-            die "patch does not apply to this source drop: $name
-Upstream has moved. Rebase or drop the patch, then re-run."
-        echo "  applied $name" >&2
-        applied_patches="$applied_patches $name"
-    done
-    applied_patches="${applied_patches# }"
+    mkdir -p "$BUILD_DIR"
 
     docker run --rm \
-        -v "$PATCH_TREE":/src -v "$BUILD_DIR":/out \
+        -v "$SRC":/src -v "$BUILD_DIR":/out \
         "$TOOLCHAIN_IMAGE" \
         bash -lc '
 set -eu
@@ -136,20 +113,11 @@ fi
 [ -f "$HOOK" ] || die "hook not built: $HOOK (build failed, or FUN_DRASTIC_BUILD=0 with no prior build)"
 
 hook_sha="$(shasum -a 256 "$HOOK" | awk '{print $1}')"
-# The upstream source, not the patched copy: this records which drop the build
-# started from. The patch list beside it says what was changed on top.
+# Local fixes live in the source repo itself, agreed with tenlevels, so anyone
+# forking it gets them. The commit recorded here is therefore the whole record
+# of what was built: git log from the import commit shows every local change.
 source_sha="$(shasum -a 256 "$SRC/src/funhook.c" | awk '{print $1}')"
 source_commit="$(git -C "$SRC" rev-parse HEAD 2>/dev/null || echo unknown)"
-if [ -z "${applied_patches:-}" ]; then
-    # FUN_DRASTIC_BUILD=0 reuses a hook built earlier, so the patches were
-    # applied by that run; name them anyway or the manifest would claim a
-    # stock upstream build.
-    for patch in "$PATCH_DIR"/*.patch; do
-        [ -f "$patch" ] || continue
-        applied_patches="$applied_patches $(basename "$patch")"
-    done
-    applied_patches="${applied_patches# }"
-fi
 
 # --- the allowlist ----------------------------------------------------------
 
@@ -316,10 +284,7 @@ sed \
     -e "s|@FUNHOOK_SHA256@|$source_sha|g" \
     -e "s|@BINARY_SHA256@|$binary_sha|g" \
     "$ROOT_DIR/config/mlp1/manifest.json.in" |
-    jq --argjson files "$files_json" \
-       --arg patches "$applied_patches" \
-       '. + {local_patches: ($patches | split(" ") | map(select(length > 0))),
-             files: $files}' \
+    jq --argjson files "$files_json" '. + {files: $files}' \
     >"$OUTPUT_DIR/manifest.json"
 chmod 644 "$OUTPUT_DIR/manifest.json"
 
