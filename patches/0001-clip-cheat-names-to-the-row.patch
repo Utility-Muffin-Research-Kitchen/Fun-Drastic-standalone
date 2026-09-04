@@ -12,7 +12,8 @@ draws a replacement box rather than a shorter name - and gives the name only
 the room left beside the value. cp_w() is factored out of str_w() so both
 measure the same way.
 
-Sent upstream to tenlevels; drop this patch once it lands.
+Candidate for tenlevels' tree - not yet submitted. Drop this patch once it
+lands upstream rather than carrying it forever.
 
 --- a/src/funhook.c	2026-09-04 20:04:25
 +++ b/src/funhook.c	2026-09-04 20:04:25
