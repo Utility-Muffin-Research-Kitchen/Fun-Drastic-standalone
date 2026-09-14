@@ -664,6 +664,8 @@ export_saves
 # they are a maintainer diagnostic, not support evidence.
 grep -v -e '^vf ticks' -e '^ticks_delta:' "$RUN_LOG" >"$LOG_FILE" 2>/dev/null ||
     cp -f "$RUN_LOG" "$LOG_FILE" 2>/dev/null || true
-rm -f "$RUN_LOG" 2>/dev/null || true
+if [ "$RUN_LOG" != /dev/null ]; then
+    rm -f "$RUN_LOG" 2>/dev/null || true
+fi
 
 exit "$rc"
