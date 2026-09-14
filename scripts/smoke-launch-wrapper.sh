@@ -407,6 +407,30 @@ set -e
 check "missing argument is rejected" test "$no_args_rc" -eq 2
 check "missing ROM is rejected" test "$missing_rom_rc" -eq 1
 
+# --- unavailable run log ----------------------------------------------------
+
+echo "== an unavailable run log cannot remove /dev/null =="
+# A directory at run.log forces the fallback even when this test runs as root.
+# Intercept rm so a regression records the attempted deletion without touching
+# the host's real device node.
+mkdir -p "$WORK/runtime/fun-drastic/run.log" "$WORK/bin"
+cat >"$WORK/bin/rm" <<'RM'
+#!/bin/sh
+for arg in "$@"; do
+    if [ "$arg" = /dev/null ]; then
+        printf 'attempted deletion\n' >"$NULL_DELETE_REPORT"
+        exit 1
+    fi
+done
+exec /bin/rm "$@"
+RM
+chmod 755 "$WORK/bin/rm"
+rm -f "$REPORT"
+run_launcher PATH="$WORK/bin:$PATH" NULL_DELETE_REPORT="$WORK/null-delete" \
+    >/dev/null 2>&1
+check "emulator still runs without a run log" test -f "$REPORT"
+check "cleanup never tries to remove /dev/null" test ! -e "$WORK/null-delete"
+
 # --- input roster policy ----------------------------------------------------
 
 if [ -f "$ROOT_DIR/../Leaf/scripts/validate-input-roster-policy.py" ]; then
