@@ -1,5 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# LOG-SAFE-1. The session log lives on a FAT card and can go unwritable (a bad
+# cluster chain, a full card, or the FAT32 4 GiB per-file ceiling). stdout and
+# stderr here are inherited from the launcher and point at that file. Under
+# set -e a failed echo would abort this script and the game would never start,
+# so probe both once and fall back to /dev/null, then never let a log write
+# decide whether a game launches.
+leaf_log_probe() {
+    # A real byte, not a zero-length write: a 0-byte write can succeed without
+    # touching the device and would not detect EIO/EFBIG. The subshell ignores
+    # SIGXFSZ: at the FAT32 ceiling the kernel raises it and its default action
+    # would kill this shell before the write could fail with EFBIG.
+    ( trap '' XFSZ; printf '\n' ) 2>/dev/null
+}
+leaf_log_probe >/dev/null 2>&1 || true
+if ! leaf_log_probe; then
+    exec >/dev/null
+fi
+if ! leaf_log_probe >&2; then
+    exec 2>/dev/null
+fi
+
+log() { ( trap '' XFSZ; printf '%s\n' "$*" ) 2>/dev/null || true; }
 
 # Fun DraStic launch wrapper for Leaf on MLP1.
 #
@@ -38,13 +60,13 @@ elif [ -n "${SDCARD_PATH:-}" ] && [ -n "${PLATFORM:-}" ] &&
 fi
 
 if [ "$#" -ne 1 ]; then
-    echo "usage: $0 ROM" >&2
+    log "usage: $0 ROM"
     exit 2
 fi
 
 ROM_PATH="$1"
 if [ ! -f "$ROM_PATH" ]; then
-    echo "Fun DraStic ROM not found: $ROM_PATH" >&2
+    log "Fun DraStic ROM not found: $ROM_PATH"
     exit 1
 fi
 
@@ -71,12 +93,16 @@ INSTALLED_VERSION_FILE="$STATE_ROOT/.umrk-defaults-version"
 # falls back to its own free replacement BIOS on its own.
 NDS_BIOS_FILES=(nds_bios_arm7.bin nds_bios_arm9.bin nds_firmware.bin)
 
-mkdir -p "$LOGS_PATH" "$RUNTIME_DIR"
-: >"$RUN_LOG"
+# LOG-SAFE-1. LOGS_PATH sits on the FAT card; RUNTIME_DIR sits on tmpfs. The
+# card may refuse either the directory or the final filtered copy, so neither
+# is allowed to decide whether the game launches.
+mkdir -p "$LOGS_PATH" 2>/dev/null || true
+mkdir -p "$RUNTIME_DIR" 2>/dev/null || true
+: >"$RUN_LOG" 2>/dev/null || RUN_LOG=/dev/null
 
 log() {
     printf '[%s] %s\n' "$(date '+%H:%M:%S' 2>/dev/null || echo '--:--:--')" "$*" \
-        >>"$RUN_LOG"
+        >>"$RUN_LOG" 2>/dev/null || true
 }
 
 log "=== Fun DraStic launch ==="
@@ -157,13 +183,13 @@ done
 # previous package shipped, the way the Flycast package handles its mappings.
 
 if [ ! -f "$DEFAULTS_VERSION_FILE" ]; then
-    echo "Fun DraStic package is missing defaults/config.version" >&2
+    log "Fun DraStic package is missing defaults/config.version"
     exit 1
 fi
 DEFAULTS_VERSION="$(tr -d '[:space:]' <"$DEFAULTS_VERSION_FILE")"
 case "$DEFAULTS_VERSION" in
     ''|*[!0-9]*)
-        echo "invalid Fun DraStic defaults version: $DEFAULTS_VERSION" >&2
+        log "invalid Fun DraStic defaults version: $DEFAULTS_VERSION"
         exit 1
         ;;
 esac
@@ -173,7 +199,7 @@ if [ -f "$INSTALLED_VERSION_FILE" ]; then
     INSTALLED_VERSION="$(tr -d '[:space:]' <"$INSTALLED_VERSION_FILE")"
     case "$INSTALLED_VERSION" in
         ''|*[!0-9]*)
-            echo "invalid installed Fun DraStic defaults version: $INSTALLED_VERSION" >&2
+            log "invalid installed Fun DraStic defaults version: $INSTALLED_VERSION"
             exit 1
             ;;
     esac
@@ -388,7 +414,7 @@ export_saves() {
 
 # Timestamp reference for find_session_save; created before the emulator runs.
 SESSION_MARKER="$RUNTIME_DIR/session.stamp"
-: >"$SESSION_MARKER"
+: >"$SESSION_MARKER" 2>/dev/null || true
 
 import_saves
 
@@ -584,7 +610,7 @@ for required in "$DRASTIC_BIN" "$ROOT_DIR/lib/libfundrastic.so" \
                 "$ROOT_DIR/lib/libSDL2-2.0.so.0" "$ROOT_DIR/lib/libxkbcommon.so.0" \
                 "$ROOT_DIR/lib/libwayland-cursor.so.0" "$ROOT_DIR/lib/libasound.so.2"; do
     if [ ! -e "$required" ]; then
-        echo "Fun DraStic package is incomplete: $required" >&2
+        log "Fun DraStic package is incomplete: $required"
         exit 1
     fi
 done
