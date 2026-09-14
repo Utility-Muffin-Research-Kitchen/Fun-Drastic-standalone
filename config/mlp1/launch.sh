@@ -378,7 +378,7 @@ find_session_save() {
         [ -f "$candidate" ] || continue
         [ "$candidate" -nt "$SESSION_MARKER" ] || continue
         if [ "$candidate" = "$predicted" ]; then
-            printf '%s' "$predicted"
+            printf '%s' "$predicted" 2>/dev/null || true
             return 0
         fi
         if [ -z "$newest" ] || [ "$candidate" -nt "$newest" ]; then
@@ -388,14 +388,14 @@ find_session_save() {
 
     if [ -n "$newest" ]; then
         log "WARNING: expected save '$FUN_SAVE_NAME.sram' but the session wrote '$(basename "$newest")'; the naming rule has changed"
-        printf '%s' "$newest"
+        printf '%s' "$newest" 2>/dev/null || true
         return 0
     fi
 
     # Nothing was written. Naming the predicted file keeps the caller simple:
     # the newest-wins check in mirror_one_save skips it.
     [ -f "$predicted" ] || return 1
-    printf '%s' "$predicted"
+    printf '%s' "$predicted" 2>/dev/null || true
 }
 
 export_saves() {
