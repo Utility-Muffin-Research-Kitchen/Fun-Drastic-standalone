@@ -92,6 +92,12 @@ cat >"$PKG/bin/drastic64" <<'STUB'
 # nothing.
 if [ -n "${FUN_DRASTIC_STUB_WRITE_SAVE:-}" ]; then
     mkdir -p "${SDCARD_PATH:?}/Saves/NDS"
+    # The mirror decides "written this run" by comparing mtime against the
+    # launcher's session marker. Where filesystem timestamps are whole seconds,
+    # a write landing in the same second as the marker is not strictly newer,
+    # so the save is missed and this test fails about half the time - on no
+    # fault of its own. Sleeping puts a clear second between the two.
+    sleep 1
     printf 'fun-drastic-save' >"$SDCARD_PATH/Saves/NDS/$FUN_DRASTIC_STUB_WRITE_SAVE"
 fi
 exit "${FUN_DRASTIC_STUB_RC:-0}"
@@ -260,7 +266,8 @@ echo "== the mirror never touches another game's save =="
 # not read, rewrite, or invent a file for any other.
 printf 'other-game' >"$PRIMARY_BACKUP/Some Other Game.dsv"
 other_before="$(shasum -a 256 "$PRIMARY_BACKUP/Some Other Game.dsv" | cut -d" " -f1)"
-# A save the emulator wrote under a mangled name, as it does for archived ROMs.
+# A leftover .sram belonging to some other game - nothing this session touches
+# it, so nothing about it may reach the other package's save folder.
 printf 'truncated' >"$FD_SAVES/A Game's Demo (USA.sram"
 run_launcher >/dev/null 2>&1
 other_after="$(shasum -a 256 "$PRIMARY_BACKUP/Some Other Game.dsv" | cut -d" " -f1)"
@@ -280,9 +287,13 @@ check "an unplayed session does not rewrite the primary save" \
     test "$before" = "$after"
 
 echo "== the save-name rule matches what Fun DraStic actually does =="
-# Fun DraStic cuts the save name at the first ") (". A ROM with No-Intro style
-# region and language tags therefore saves under a different name than its own,
-# and the mirror has to follow that or sharing silently does nothing.
+# Fun DraStic names the save after the ROM's own base name, exactly as the
+# primary DraStic package does - only the directory and the extension differ.
+# The mirror has to follow that or sharing silently does nothing.
+#
+# It once cut the name short, which left the emulator writing under a name the
+# mirror does not predict and produced a second save beside the imported one;
+# the check below is what keeps that from coming back.
 TAGGED="$SD/Roms/NDS/Mario Kart DS (USA Australia) (EnFrDeEsIt).nds"
 printf 'rom' >"$TAGGED"
 printf 'tagged-primary' >"$PRIMARY_BACKUP/Mario Kart DS (USA Australia) (EnFrDeEsIt).dsv"
@@ -291,15 +302,15 @@ env -u SDL_JOYSTICK_DEVICE PLATFORM=mlp1 SDCARD_PATH="$SD" \
     BIOS_PATH="$SD/BIOS" UMRK_INTERNAL_DATA_PATH="$SD/.umrk/mlp1" \
     UMRK_RUNTIME_PATH="$WORK/runtime" FUN_HOOK=0 \
     FUN_DRASTIC_STUB_REPORT="$REPORT" \
-    FUN_DRASTIC_STUB_WRITE_SAVE="Mario Kart DS (USA Australia.sram" \
+    FUN_DRASTIC_STUB_WRITE_SAVE="Mario Kart DS (USA Australia) (EnFrDeEsIt).sram" \
     "$PKG/launch.sh" "$TAGGED" >/dev/null 2>&1
-check "import uses the truncated name the emulator will look for" \
-    test -f "$FD_SAVES/Mario Kart DS (USA Australia.sram"
-check "import does not use the full ROM name" \
-    test ! -e "$FD_SAVES/Mario Kart DS (USA Australia) (EnFrDeEsIt).sram"
-check_contains "export lands under the full ROM name the other package reads" \
+check "import uses the ROM's own name, the one the emulator looks for" \
+    test -f "$FD_SAVES/Mario Kart DS (USA Australia) (EnFrDeEsIt).sram"
+check "no shortened duplicate appears beside it" \
+    test ! -e "$FD_SAVES/Mario Kart DS (USA Australia.sram"
+check_contains "export lands under the same name the other package reads" \
     "$PRIMARY_BACKUP/Mario Kart DS (USA Australia) (EnFrDeEsIt).dsv" "fun-drastic-save"
-check "no junk save under the truncated name" \
+check "no junk save under a shortened name" \
     test ! -e "$PRIMARY_BACKUP/Mario Kart DS (USA Australia.dsv"
 
 echo "== a changed naming rule is caught, not silently skipped =="
@@ -349,6 +360,9 @@ printf 'nds-rom-body' >"$WORK/$ZIP_BASE.nds"
 (cd "$WORK" && zip -q "$ZIP_ROM" "$ZIP_BASE.nds")
 
 EXTRACTED="$STATE/unzip_cache/leaf/$ZIP_BASE.nds"
+# A primary DraStic save for the same game, so the import has something to land
+# on and the name it lands under can be seen.
+printf 'contra-primary' >"$PRIMARY_BACKUP/$ZIP_BASE.dsv"
 LAUNCH_ROM="$ZIP_ROM" run_launcher >/dev/null 2>&1
 check_contains "a zipped ROM is launched as the extracted .nds" "$REPORT" \
     "argv=$EXTRACTED"
@@ -356,12 +370,15 @@ check "the extracted ROM keeps the archive's base name" test -f "$EXTRACTED"
 check "the extracted ROM is the archive's content" \
     test "$(cat "$EXTRACTED")" = "nds-rom-body"
 
-# The whole point of keeping the base name. The save name is derived from the
-# ROM the player picked, never from the path handed to the emulator, so
-# extraction must not move it: "Contra 4 (USA) (Rev 1)" cuts at the first ") ("
-# either way.
-check_contains "the save name still comes from the archive's own name" "$LOG" \
-    "save 'Contra 4 (USA'"
+# The whole point of keeping the base name: the save is named after the ROM the
+# player picked, never after the path handed to the emulator, so extraction
+# must not move it. It used to be cut short, which left a second save beside
+# the imported one - the second check is what keeps that from coming back.
+check "the save is named after the archive's own base name" \
+    test -f "$FD_SAVES/$ZIP_BASE.sram"
+check "no shortened duplicate appears beside it" \
+    test ! -e "$FD_SAVES/Contra 4 (USA.sram"
+rm -f "$PRIMARY_BACKUP/$ZIP_BASE.dsv" "$FD_SAVES/$ZIP_BASE.sram"
 
 # A second game must not leave the first one's 32 MB behind.
 ZIP_BASE2="Metal Slug 7 (Europe)"

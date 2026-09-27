@@ -140,26 +140,28 @@ directions, which is why the primary DraStic package needs no change. Set
 
 Configuration and savestates are **not** shared, and are not mirrored.
 
-### The save-name caveat
+### Save naming
 
-Fun DraStic does not name the save after the ROM. It cuts the name at the first
-`) (`, which looks like an attempt to strip No-Intro region and language tags
-that stops one character short of the bracket:
+Fun DraStic names the save after the ROM's base name, exactly as the primary
+DraStic package does - only the directory and the extension differ:
 
 ```text
 Mario Kart DS (USA, Australia) (En,Fr,De,Es,It).nds
-  -> Saves/NDS/Mario Kart DS (USA, Australia.sram
+  -> Saves/NDS/Mario Kart DS (USA, Australia) (En,Fr,De,Es,It).sram
 ```
 
-A name with one bracketed tag, or none, is left alone. The wrapper reproduces
-this rule so the import lands where the emulator will look for it, and always
-writes the export back under the ROM's own name so the other package finds it.
+It used to be cut short, which was two bugs in one: it split multibyte UTF-8
+and so produced an invalid-UTF-8 filename that a `utf8`-mounted FAT32 refuses
+(the CJK white-screen and exit), and it left the emulator writing under a name
+the save mirror does not predict, so a second save appeared beside the imported
+one. Both are fixed and the save name is now the ROM base name whole; the
+28-character limit survives only on the menu's display string, which is never a
+filename.
 
-The rule is reverse-engineered from an MLP1, not documented, so the wrapper
-also checks it: if the session writes a `.sram` under a name it did not
-predict, that file is exported anyway and a warning naming both goes in the
-log. A rule change degrades to a logged surprise rather than silently losing a
-save. Upstream fixing the truncation is on the wishlist.
+The wrapper still checks its prediction rather than trusting it: if the session
+writes a `.sram` under a name it did not predict, that file is exported anyway
+and a warning naming both goes in the log. A naming change degrades to a logged
+surprise rather than silently losing a save.
 
 ## Wrapper corrections
 
