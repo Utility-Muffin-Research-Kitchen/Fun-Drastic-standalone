@@ -7,7 +7,8 @@ set -euo pipefail
 # Everything UMRK actually authored is in the wrapper, so the wrapper is
 # exercised against a synthetic package with a stub emulator: the seeding
 # split, the state and log locations, the BIOS handling, the roster contract,
-# the versioned defaults stamp, and the shared-save mirror.
+# the versioned defaults stamp, the shared-save mirror, and the copy of files
+# the old hook named under a cut-down name.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/fun-drastic-smoke.XXXXXX")" && pwd -P)"
@@ -328,6 +329,72 @@ env -u SDL_JOYSTICK_DEVICE PLATFORM=mlp1 SDCARD_PATH="$SD" \
 check_contains "the mismatch is logged" "$LOG" "the naming rule has changed"
 check_contains "the round trip still completes" \
     "$PRIMARY_BACKUP/Unexpected Name.dsv" "fun-drastic-save"
+
+echo "== files named by the old hook are copied to the whole name =="
+# Earlier hooks cut the name to its first 28 bytes for the save, the
+# savestates, their previews and the cheat selection. The launcher copies them
+# to the whole name once, or a game with a longer name opens with empty slots.
+# The brackets make sure the name is matched literally, not as a glob class.
+OLD_HOOK_ROM="$SD/Roms/NDS/Tetris DS [b1] (USA) (En,Fr,De).nds"
+OLD_WHOLE="Tetris DS [b1] (USA) (En,Fr,De)"
+OLD_CUT="Tetris DS [b1] (USA) (En,Fr,"
+FD_STATES="$FD_SAVES/states"
+FD_PREVIEWS="$FD_SAVES/previews"
+LEGACY_DONE="$STATE/.umrk-legacy-names-migrated"
+printf 'rom' >"$OLD_HOOK_ROM"
+mkdir -p "$FD_STATES" "$FD_PREVIEWS" "$STATE/cheats"
+printf 'old-sram' >"$FD_SAVES/$OLD_CUT.sram"
+printf 'old-state-0' >"$FD_STATES/$OLD_CUT.st0"
+printf 'old-state-3' >"$FD_STATES/$OLD_CUT.st3"
+printf 'old-preview-0' >"$FD_PREVIEWS/$OLD_CUT.0.raw"
+printf 'old-cheats' >"$STATE/cheats/$OLD_CUT.cht"
+# What "[b1]" would match as a glob class. It belongs to no game here.
+printf 'not-this-game' >"$FD_STATES/Tetris DS b (USA) (En,Fr,.st1"
+# A slot already saved under the whole name, newer than the old one.
+printf 'whole-state-3' >"$FD_STATES/$OLD_WHOLE.st3"
+touch -t 202001010000 "$FD_SAVES/$OLD_CUT.sram" "$FD_STATES/$OLD_CUT".st* \
+    "$FD_PREVIEWS/$OLD_CUT.0.raw" "$STATE/cheats/$OLD_CUT.cht"
+LAUNCH_ROM="$OLD_HOOK_ROM" run_launcher >/dev/null 2>&1
+check "the old save reaches the whole name" \
+    test "$(cat "$FD_SAVES/$OLD_WHOLE.sram" 2>/dev/null)" = "old-sram"
+check "an old savestate reaches the whole name" \
+    test "$(cat "$FD_STATES/$OLD_WHOLE.st0" 2>/dev/null)" = "old-state-0"
+check "its preview reaches the whole name" \
+    test "$(cat "$FD_PREVIEWS/$OLD_WHOLE.0.raw" 2>/dev/null)" = "old-preview-0"
+check "the cheat selection reaches the whole name" \
+    test "$(cat "$STATE/cheats/$OLD_WHOLE.cht" 2>/dev/null)" = "old-cheats"
+check "a newer whole-name slot is not replaced" \
+    test "$(cat "$FD_STATES/$OLD_WHOLE.st3")" = "whole-state-3"
+check "the copy keeps the old file's time" \
+    test ! "$FD_STATES/$OLD_WHOLE.st0" -nt "$FD_STATES/$OLD_CUT.st0"
+check "the old files stay for a game that shared them" \
+    test -f "$FD_STATES/$OLD_CUT.st0"
+check "the name is matched literally, not as a glob" \
+    test ! -e "$FD_STATES/$OLD_WHOLE.st1"
+check "the game is recorded as done" grep -Fxq -- "$OLD_WHOLE" "$LEGACY_DONE"
+not_recorded() { ! grep -Fxq -- "$1" "$LEGACY_DONE"; }
+check "a short name is never recorded" not_recorded "$ROM_BASE"
+
+# The hook deletes the cheat file when every cheat is turned off. A second copy
+# would turn them back on.
+rm -f "$STATE/cheats/$OLD_WHOLE.cht"
+LAUNCH_ROM="$OLD_HOOK_ROM" run_launcher >/dev/null 2>&1
+check "cheats turned off stay off" test ! -e "$STATE/cheats/$OLD_WHOLE.cht"
+check "the game is recorded once" \
+    test "$(grep -Fxc -- "$OLD_WHOLE" "$LEGACY_DONE")" -eq 1
+
+echo "== the old hook's cut is counted in bytes =="
+# The old hook ended the name at byte 28. With an accented letter in it, that is
+# one character shorter than a cut at character 28, which must be ignored.
+UTF8_LOCALE="$(locale -a 2>/dev/null | grep -i -m1 -E '^(C|en_US)\.utf-?8$' || true)"
+ACCENT_ROM="$SD/Roms/NDS/Pokémon Mystery Dungeon - Explorers of Sky (USA).nds"
+printf 'rom' >"$ACCENT_ROM"
+printf 'byte-cut' >"$FD_STATES/Pokémon Mystery Dungeon - E.st0"
+printf 'char-cut' >"$FD_STATES/Pokémon Mystery Dungeon - Ex.st0"
+LAUNCH_ROM="$ACCENT_ROM" run_launcher ${UTF8_LOCALE:+LC_ALL="$UTF8_LOCALE"} \
+    >/dev/null 2>&1
+check "the byte cut is the one copied${UTF8_LOCALE:+ (under $UTF8_LOCALE)}" \
+    test "$(cat "$FD_STATES/Pokémon Mystery Dungeon - Explorers of Sky (USA).st0" 2>/dev/null)" = "byte-cut"
 
 echo "== sharing can be switched off =="
 rm -f "$PRIMARY_BACKUP/$ROM_BASE.dsv" "$FD_SAVES/$ROM_BASE.sram"
