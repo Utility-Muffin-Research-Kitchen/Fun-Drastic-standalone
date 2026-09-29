@@ -33,8 +33,10 @@ the filenames and where to put them.
 
 Where things live
 -----------------
-State, configuration, savestates and in-game saves:
+State and configuration:
   .userdata/<platform>/fun-drastic
+In-game saves, savestates and their previews:
+  Saves/NDS, Saves/NDS/states and Saves/NDS/previews
 Support log:
   .userdata/<platform>/logs/fun-drastic.log
 
@@ -47,9 +49,11 @@ state directory as .dsv. Same bytes, different name. The launcher mirrors the
 launched game's save in before launch and out after exit, newest wins.
 Configuration and savestates are not shared.
 
-Note that Fun DraStic cuts a save's name at the first ") (", so a ROM named
-"Game (USA) (En,Fr).nds" saves as "Game (USA.sram". That is upstream behaviour;
-the launcher follows it so sharing still works.
+Saves and savestates are named after the ROM's whole name, the same name the
+primary DraStic package uses. Fun DraStic used to cut that name to its first
+28 bytes. The first time you start a game with a longer name, the launcher
+copies the files saved under the shorter name to the whole name and leaves the
+originals in place.
 
 Support diagnostics
 -------------------

@@ -158,6 +158,15 @@ one. Both are fixed and the save name is now the ROM base name whole; the
 28-character limit survives only on the menu's display string, which is never a
 filename.
 
+Files the old hook wrote under the cut name are copied across once. Before the
+emulator starts, the wrapper looks for the save, the savestates, their previews
+and the cheat selection under the first 28 bytes of the ROM name, and copies
+each one to the whole name unless a newer file is already there. The originals
+stay, because two ROMs whose names share those 28 bytes shared the files. Once
+a game's files are copied it is listed in `.umrk-legacy-names-migrated` in the
+state root and never copied again, so a cheat file the hook deletes when every
+cheat is turned off does not come back.
+
 The wrapper still checks its prediction rather than trusting it: if the session
 writes a `.sram` under a name it did not predict, that file is exported anyway
 and a warning naming both goes in the log. A naming change degrades to a logged

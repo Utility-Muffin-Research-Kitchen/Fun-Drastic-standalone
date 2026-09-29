@@ -411,6 +411,85 @@ export_saves() {
         "$PRIMARY_BACKUP_DIR/$ROM_BASE_NAME.dsv" exported
 }
 
+# --- files named before the whole-name hook ---------------------------------
+
+# Earlier hooks cut the ROM name to its first 28 bytes for every file they
+# named after it: the in-game save, the savestates and their previews under
+# $SDCARD_PATH/Saves/NDS, and the cheat selection in the state root's cheats/.
+# Nothing looks for those names any more, so a game with a longer name would
+# open with empty state slots and no cheats ticked. Those files are copied to
+# the whole name before the emulator runs.
+#
+#  * Copied, not moved. Two ROMs whose names share their first 28 bytes shared
+#    these files under the old hook, so either game may be the one they belong
+#    to. Each gets its own copy, and the originals stay where they are.
+#  * Newest wins, keeping the modification time, as in the save mirror. A file
+#    already written under the whole name is never replaced by an older one,
+#    and the in-game save then goes through the import below, where a newer
+#    primary DraStic save still wins.
+#  * Once per game. The hook deletes the cheat file when every cheat is turned
+#    off, so copying on every launch would bring it back. A game is recorded in
+#    LEGACY_NAMES_DONE once everything found under its old name was copied.
+#  * Bytes, not characters. The old hook ended the name with a NUL at offset 28
+#    whatever the encoding. A cut through a multibyte character is a name the
+#    card refuses, so nothing can exist under it and nothing is copied.
+LEGACY_NAME_BYTES=28
+LEGACY_NAMES_DONE="$STATE_ROOT/.umrk-legacy-names-migrated"
+FUN_DRASTIC_STATES_DIR="$FUN_DRASTIC_SAVES_DIR/states"
+FUN_DRASTIC_PREVIEWS_DIR="$FUN_DRASTIC_SAVES_DIR/previews"
+FUN_DRASTIC_CHEATS_DIR="$STATE_ROOT/cheats"
+
+legacy_fun_drastic_name() {
+    # LC_ALL=C makes the substring count bytes; the subshell keeps that locale
+    # out of the rest of the script.
+    ( LC_ALL=C; printf '%s' "${1:0:$LEGACY_NAME_BYTES}" ) 2>/dev/null || true
+}
+
+migrate_legacy_names() {
+    local legacy
+    legacy="$(legacy_fun_drastic_name "$ROM_BASE_NAME")"
+    [ -n "$legacy" ] && [ "$legacy" != "$FUN_SAVE_NAME" ] || return 0
+    if grep -Fxq -- "$ROM_BASE_NAME" "$LEGACY_NAMES_DONE" 2>/dev/null; then
+        return 0
+    fi
+
+    # The hook's own patterns: <name>.sram, <name>.st<slot>, <name>.<slot>.raw
+    # and <name>.cht. Quoting $legacy keeps a bracket in a No-Intro name
+    # literal inside the globs.
+    local sources=(
+        "$FUN_DRASTIC_SAVES_DIR/$legacy.sram"
+        "$FUN_DRASTIC_STATES_DIR/$legacy".st[0-9]
+        "$FUN_DRASTIC_PREVIEWS_DIR/$legacy".[0-9].raw
+        "$FUN_DRASTIC_CHEATS_DIR/$legacy.cht"
+    )
+    local source_file base target found=0 failed=0
+    for source_file in "${sources[@]}"; do
+        [ -f "$source_file" ] || continue
+        found=$((found + 1))
+        base="${source_file##*/}"
+        target="${source_file%/*}/$FUN_SAVE_NAME${base#"$legacy"}"
+        if [ -f "$target" ] && [ ! "$source_file" -nt "$target" ]; then
+            continue
+        fi
+        if cp -p -f "$source_file" "$target" 2>/dev/null ||
+           cp -f "$source_file" "$target" 2>/dev/null; then
+            log "copied to the whole ROM name: $base"
+        else
+            failed=$((failed + 1))
+            log "WARNING: could not copy to the whole ROM name: $base"
+        fi
+    done
+
+    # A game with nothing under its old name is not recorded, so a later launch
+    # still looks. Recording it after a failed copy would give up on that file.
+    if [ "$found" -gt 0 ] && [ "$failed" -eq 0 ]; then
+        printf '%s\n' "$ROM_BASE_NAME" >>"$LEGACY_NAMES_DONE" 2>/dev/null ||
+            log "WARNING: could not record the copied names for this game"
+    fi
+}
+
+migrate_legacy_names
+
 # Timestamp reference for find_session_save; created before the emulator runs.
 SESSION_MARKER="$RUNTIME_DIR/session.stamp"
 : >"$SESSION_MARKER" 2>/dev/null || true
