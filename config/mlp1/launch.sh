@@ -320,32 +320,31 @@ mirror_one_save() {
 #
 #  * Blast radius. These are the user's real saves. A per-ROM mirror cannot
 #    touch a game this session has nothing to do with.
-#  * Fun DraStic truncates the save name for a ROM launched from an archive -
-#    "Game (USA) (En,Fr).zip" saves as "Game (USA.sram" - so a whole-directory
-#    export copies that mangled name back into the other package's save folder
-#    as a junk .dsv that nothing will ever read. Scoping to the launched ROM's
-#    own base name leaves it alone. See the archive caveat in README.txt.
+#  * A whole-directory copy would write every .sram back into the other
+#    package's save folder, where all but one belong to games nothing was
+#    played this session. Scoping to the launched ROM's own base name leaves
+#    the rest alone.
 ROM_BASE_NAME="$(basename "$ROM_PATH")"
 ROM_BASE_NAME="${ROM_BASE_NAME%.*}"
 
-# Fun DraStic does not name the save after the ROM. It cuts the name at the
-# first ") (" - what looks like an attempt to strip No-Intro region and
-# language tags, one character short of the closing bracket. Observed on an
-# MLP1, for both a raw .nds and the same ROM inside a .zip:
+# Fun DraStic names the save after the ROM's base name - the same name primary
+# DraStic derives from the same ROM, with only the directory and the extension
+# different - so the predicted name below is the ROM base name unchanged.
 #
-#   "ZZ Fun DraStic Test (raw)"                 -> "ZZ Fun DraStic Test (raw)"
-#   "Mario Kart DS (USA Australia) (EnFrDeEsIt)" -> "Mario Kart DS (USA Australia"
+# It used to be truncated to 28 characters, and the hook named its own save
+# after that truncated form. The launcher did not know that, so the import
+# landed on one name while the emulator wrote another, and the game ended up
+# with two saves, one under a cut-down name. The truncation is gone from the
+# hook's filenames (cutting UTF-8 mid-character there was also what made the
+# name invalid and crashed the launch), so there is no rule left here to
+# reverse-engineer.
 #
-# The rule is reverse-engineered, so it is used for the import (where a name
-# has to be chosen up front) and then checked against what the emulator
-# actually wrote. A mismatch is logged loudly rather than silently skipping the
-# save, and the export falls back to whatever .sram the session really touched.
+# The prediction is still checked against what the emulator actually wrote, and
+# the export falls back to whichever .sram the session really touched, so a
+# future naming change still degrades to a logged surprise rather than a lost
+# save.
 fun_drastic_save_name() {
-    local name="$1"
-    case "$name" in
-        *") ("*) printf '%s' "${name%%") ("*}" 2>/dev/null || true ;;
-        *)       printf '%s' "$name" 2>/dev/null || true ;;
-    esac
+    printf '%s' "$1" 2>/dev/null || true
 }
 FUN_SAVE_NAME="$(fun_drastic_save_name "$ROM_BASE_NAME")"
 if [ "$FUN_SAVE_NAME" != "$ROM_BASE_NAME" ]; then
