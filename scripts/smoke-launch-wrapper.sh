@@ -6,9 +6,9 @@ set -euo pipefail
 # The upstream archive is not published, so CI cannot build a real package.
 # Everything UMRK actually authored is in the wrapper, so the wrapper is
 # exercised against a synthetic package with a stub emulator: the seeding
-# split, the state and log locations, the BIOS handling, the roster contract,
-# the versioned defaults stamp, the shared-save mirror, and the copy of files
-# the old hook named under a cut-down name.
+# split, the language refresh, the state and log locations, the BIOS handling,
+# the roster contract, the versioned defaults stamp, the shared-save mirror,
+# and the copy of files the old hook named under a cut-down name.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/fun-drastic-smoke.XXXXXX")" && pwd -P)"
@@ -66,6 +66,8 @@ printf 'controls_b[CONTROL_INDEX_MENU] = 1\nunzip_roms = 1\n' \
 : >"$PKG/fonts/Nunito-Bold.ttf"
 : >"$PKG/fonts/Translate.otf"
 : >"$PKG/language/template.txt"
+printf 'LANGUAGE=IDIOMA\n' >"$PKG/language/es_MX.txt"
+printf 'LANGUAGE=语言\n' >"$PKG/language/zh_CN.txt"
 : >"$PKG/themes/custom.cfg"
 : >"$PKG/res/cursor/1.png"
 : >"$PKG/microphone/microphone.wav"
@@ -159,7 +161,7 @@ done
 echo "== hook assets resolved from FUN_DRASTIC_DIR =="
 # This is the half the vendor launcher omits. Without it the menu has no font.
 for relative in fonts/Nunito-Bold.ttf fonts/Translate.otf language/template.txt \
-                themes/custom.cfg Overlays/960x720/Template/aspect_single.png \
+                language/es_MX.txt language/zh_CN.txt themes/custom.cfg Overlays/960x720/Template/aspect_single.png \
                 res/cursor/1.png user_emu.cfg; do
     check "seeded $relative" test -e "$STATE/$relative"
 done
@@ -210,6 +212,59 @@ printf 'controls_b[CONTROL_INDEX_MENU] = 99\nunzip_roms = 0\n' \
 run_launcher >/dev/null 2>&1
 check_contains "user drastic.cfg preserved" "$STATE/config/drastic.cfg" \
     "controls_b[CONTROL_INDEX_MENU] = 99"
+
+# --- language files on an upgraded card -------------------------------------
+
+echo "== an upgraded card receives the package's language files =="
+# A card that ran an earlier package already has language/, which the old
+# seed-once rule never touched again. It holds the pre-rename chinese.txt and
+# spanish.txt, which no language loads any more, and copies of the package's
+# own files that a later package changed. A file the player added is theirs.
+printf 'LANGUAGE=OLD\n' >"$STATE/language/chinese.txt"
+printf 'LANGUAGE=OLD\n' >"$STATE/language/spanish.txt"
+printf 'LANGUAGE=OLD\n' >"$STATE/language/es_MX.txt"
+printf '# an older template\n' >"$STATE/language/template.txt"
+rm -f "$STATE/language/zh_CN.txt"
+printf 'LANGUAGE=MINE\n' >"$STATE/language/ja_JP.txt"
+run_launcher >/dev/null 2>&1
+for lang in es_MX.txt zh_CN.txt template.txt; do
+    check "$lang matches the package" \
+        cmp -s "$PKG/language/$lang" "$STATE/language/$lang"
+done
+check "pre-rename chinese.txt removed" test ! -e "$STATE/language/chinese.txt"
+check "pre-rename spanish.txt removed" test ! -e "$STATE/language/spanish.txt"
+check "a player-added language file is kept" \
+    test -e "$STATE/language/ja_JP.txt"
+
+# An identical file is left alone rather than rewritten on every launch. The
+# state copy is backdated, so a rewrite would make it newer than the marker.
+touch -t 200001010000 "$STATE/language/zh_CN.txt"
+touch -t 200001020000 "$WORK/language-marker"
+run_launcher >/dev/null 2>&1
+check "an unchanged language file is not rewritten" \
+    test -z "$(find "$STATE/language/zh_CN.txt" -newer "$WORK/language-marker")"
+
+echo "== a language file that cannot be removed does not block the game =="
+# A card remounted read-only refuses the delete. rm is intercepted rather than
+# the directory made read-only, so the check holds when this test runs as root.
+mkdir -p "$WORK/bin-lang"
+cat >"$WORK/bin-lang/rm" <<'RM'
+#!/bin/sh
+for arg in "$@"; do
+    case "$arg" in */language/chinese.txt) exit 1 ;; esac
+done
+exec /bin/rm "$@"
+RM
+chmod 755 "$WORK/bin-lang/rm"
+printf 'LANGUAGE=OLD\n' >"$STATE/language/chinese.txt"
+rm -f "$REPORT"
+lang_rc=0
+run_launcher PATH="$WORK/bin-lang:$PATH" >/dev/null 2>&1 || lang_rc=$?
+check "launcher succeeds when the delete fails" test "$lang_rc" -eq 0
+check "emulator still runs when the delete fails" test -f "$REPORT"
+check_contains "the failed delete is logged" "$LOG" \
+    "could not remove pre-rename language files"
+rm -f "$STATE/language/chinese.txt"
 
 # --- user-supplied Nintendo BIOS --------------------------------------------
 
