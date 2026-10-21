@@ -153,7 +153,26 @@ done
 # path inside libfundrastic.so for any of these, so dropping one of them on the
 # assumption that a future hook build embeds its assets breaks the menu.
 seed_if_missing "$ROOT_DIR/fonts" "$STATE_ROOT/fonts"
-seed_if_missing "$ROOT_DIR/language" "$STATE_ROOT/language"
+# The hook loads the file the system language names (UMRK_LANGUAGE=es_MX reads
+# language/es_MX.txt), so a translation added or renamed in a later package has
+# to reach a state directory that already exists: copy each package-owned .txt
+# when it is missing or different rather than only seeding the directory once.
+# No language loads the pre-rename chinese.txt and spanish.txt any more, so an
+# upgraded card drops them. Like a failed seed, none of this may stop the game.
+mkdir -p "$STATE_ROOT/language" 2>/dev/null || true
+for lang_src in "$ROOT_DIR/language"/*.txt; do
+    [ -e "$lang_src" ] || continue
+    lang_dst="$STATE_ROOT/language/$(basename "$lang_src")"
+    if [ ! -e "$lang_dst" ] || ! cmp -s "$lang_src" "$lang_dst"; then
+        if cp -f "$lang_src" "$lang_dst" 2>/dev/null; then
+            log "language synced: $(basename "$lang_src")"
+        else
+            log "WARNING: language sync failed: $(basename "$lang_src")"
+        fi
+    fi
+done
+rm -f "$STATE_ROOT/language/chinese.txt" "$STATE_ROOT/language/spanish.txt" \
+    2>/dev/null || log "WARNING: could not remove pre-rename language files"
 seed_if_missing "$ROOT_DIR/themes" "$STATE_ROOT/themes"
 seed_if_missing "$ROOT_DIR/Overlays" "$STATE_ROOT/Overlays"
 seed_if_missing "$ROOT_DIR/res" "$STATE_ROOT/res"
